@@ -1,49 +1,101 @@
-use once_cell::sync::OnceCell;
+#![cfg_attr(
+  all(not(debug_assertions), target_os = "windows"),
+  windows_subsystem = "windows"
+)]
+
+use tao::{self, event::WindowEvent};
 use windows::Win32::{
-  Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
-  UI::{
-    Input::KeyboardAndMouse::{VIRTUAL_KEY, VK_LWIN},
-    Shell::{SHQueryUserNotificationState, QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN},
-    WindowsAndMessaging::{
-      CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
-      UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP,
-      WM_SYSKEYDOWN, WM_SYSKEYUP,
-    },
-  },
+  Foundation::HWND,
+  UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR},
+};
+use wry::application::{
+  event::{Event, StartCause},
+  event_loop::{ControlFlow, EventLoop},
+  menu::{ContextMenu, MenuItemAttributes, MenuType},
+  system_tray::SystemTrayBuilder,
 };
 
-static KEYBOARD_HOOK: OnceCell<HHOOK> = OnceCell::new();
+use wide_string::ToWide;
 
-extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-  let ev = unsafe { *(lparam.0 as *const KBDLLHOOKSTRUCT) };
+mod autostart;
+mod disable_winkey;
+mod wide_string;
 
-  match (ev.vkCode as VIRTUAL_KEY, wparam.0 as u32) {
-    (VK_LWIN, WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) => {
-      let state = unsafe { SHQueryUserNotificationState().unwrap() };
-      if state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN {
-        return LRESULT(1);
-      }
-    },
-    _ => {},
-  };
+const APP_NAME: &str = "autowinkey";
 
-  unsafe { CallNextHookEx(KEYBOARD_HOOK.get().unwrap(), code, wparam, lparam) }
-}
+fn main() -> wry::Result<()> {
+  let mut autostart_enabled = autostart::check(APP_NAME);
+  let event_loop = EventLoop::new();
 
-fn main() {
-  let hhk =
-    unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook), HINSTANCE::default(), 0) };
-  KEYBOARD_HOOK.set(hhk).unwrap();
+  let mut tray_menu = ContextMenu::new();
+  let mut autostart_item = tray_menu
+    .add_item(MenuItemAttributes::new("Run when windows starts").with_selected(autostart_enabled));
+  let quit_item = tray_menu.add_item(MenuItemAttributes::new("Quit"));
 
-  let mut message = MSG::default();
-  unsafe {
-    while GetMessageW(&mut message, HWND(0), 0, 0).into() {
-      TranslateMessage(&mut message);
-      DispatchMessageW(&mut message);
+  let icon = include_bytes!("icon.ico").to_vec();
+
+  let _system_tray = SystemTrayBuilder::new(icon.clone(), Some(tray_menu))
+    .build(&event_loop)
+    .unwrap();
+
+  disable_winkey::attach();
+
+  event_loop.run(move |event, _event_loop, control_flow| {
+    *control_flow = ControlFlow::Wait;
+
+    match event {
+      Event::NewEvents(StartCause::Init) => {},
+      Event::TrayEvent {
+        event: tao::event::TrayEvent::LeftClick,
+        ..
+      } => {},
+      Event::LoopDestroyed => {
+        disable_winkey::detach().ok();
+      },
+      Event::MenuEvent {
+        menu_id,
+        origin: MenuType::ContextMenu,
+        ..
+      } => {
+        if menu_id == autostart_item.clone().id() {
+          if autostart_enabled {
+            match autostart::remove(APP_NAME) {
+              Ok(_) => {
+                autostart_item.set_selected(false);
+                autostart_enabled = autostart::check(APP_NAME);
+              },
+              Err(e) => unsafe {
+                MessageBoxW(
+                  HWND::default(),
+                  "Error removing autostart".to_wide().as_pwstr(),
+                  format!("{:?}", e.message()).to_wide().as_pwstr(),
+                  MB_ICONERROR,
+                );
+              },
+            };
+          } else {
+            match autostart::add(APP_NAME) {
+              Ok(_) => {
+                autostart_item.set_selected(true);
+                autostart_enabled = autostart::check(APP_NAME);
+              },
+              Err(e) => unsafe {
+                MessageBoxW(
+                  HWND::default(),
+                  "Error adding autostart".to_wide().as_pwstr(),
+                  format!("{:?}", e.message()).to_wide().as_pwstr(),
+                  MB_ICONERROR,
+                );
+              },
+            }
+          }
+        } else if menu_id == quit_item.clone().id() {
+          *control_flow = ControlFlow::Exit;
+        }
+      },
+      _ => {
+        // println!("{:?}", v);
+      },
     }
-  }
-
-  if unsafe { UnhookWindowsHookEx(hhk) }.0 == 0 {
-    panic!("{:?}", unsafe { GetLastError() });
-  }
+  });
 }
