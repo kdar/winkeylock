@@ -22,6 +22,8 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
   match (ev.vkCode as VIRTUAL_KEY, wparam.0 as u32) {
     (VK_LWIN, WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) => {
       let state = unsafe { SHQueryUserNotificationState().unwrap() };
+      // This is a bit hacky as it will probably disable the winkey in other applications in which
+      // the notification state is busy. We could add exceptions by window title/class later.
       if state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN {
         return LRESULT(1);
       }
