@@ -3,7 +3,7 @@
   windows_subsystem = "windows"
 )]
 
-use tao::{self, event::WindowEvent};
+use tao;
 use windows::Win32::{
   Foundation::HWND,
   UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR},
