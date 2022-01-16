@@ -31,6 +31,12 @@ Readme template copied from https://github.com/othneildrew/Best-README-Template
 <details>
   <summary>Table of Contents</summary>
   <ol>
+    <li>
+      <a href="#about-the-project">About The Project</a>
+      <ul>
+        <li><a href="#built-with">Built With</a></li>
+      </ul>
+    </li>
     <li><a href="#installation">Installation</a></li>
     <li><a href="#usage">Usage</a></li>
     <li><a href="#contributing">Contributing</a></li>
@@ -39,6 +45,14 @@ Readme template copied from https://github.com/othneildrew/Best-README-Template
 </details>
 
 <br />
+
+<!-- ABOUT THE PROJECT -->
+
+## About The Project
+
+The main motivation behind this project is preventing the windows key from ruining your gaming experience. I have a keyboard that has a windows key lock feature, but I always seem to forget to enable it before I go into a game. This program gives you a way of auto enabling/disabling the windows key during gaming, while also allowing you to continue to use the windows key in every day use.
+
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Installation
 
@@ -83,16 +97,14 @@ Distributed under the MIT License. See `LICENSE` for more information.
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 
-[contributors-shield]: https://img.shields.io/github/contributors/github_username/repo_name.svg?style=for-the-badge
+[contributors-shield]: https://img.shields.io/github/contributors/kdar/winkeylock.svg?style=for-the-badge
 [contributors-url]: https://github.com/kdar/winkeylock/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/github_username/repo_name.svg?style=for-the-badge
+[forks-shield]: https://img.shields.io/github/forks/kdar/winkeylock.svg?style=for-the-badge
 [forks-url]: https://github.com/kdar/winkeylock/network/members
-[stars-shield]: https://img.shields.io/github/stars/github_username/repo_name.svg?style=for-the-badge
+[stars-shield]: https://img.shields.io/github/stars/kdar/winkeylock.svg?style=for-the-badge
 [stars-url]: https://github.com/kdar/winkeylock/stargazers
-[issues-shield]: https://img.shields.io/github/issues/github_username/repo_name.svg?style=for-the-badge
+[issues-shield]: https://img.shields.io/github/issues/kdar/winkeylock.svg?style=for-the-badge
 [issues-url]: https://github.com/kdar/winkeylock/issues
-[license-shield]: https://img.shields.io/github/license/github_username/repo_name.svg?style=for-the-badge
-[license-url]: https://github.com/kdar/winkeylock/blob/master/LICENSE.txt
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/linkedin_username
+[license-shield]: https://img.shields.io/github/license/kdar/winkeylock.svg?style=for-the-badge
+[license-url]: https://github.com/kdar/winkeylock/blob/master/LICENSE
 [product-screenshot]: images/screenshot.png
