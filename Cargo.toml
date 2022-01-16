@@ -44,7 +44,7 @@ features = [
 OriginalFilename = "winkeylock.exe"
 LegalCopyright = "Copyright 2022 Kevin Darlington. MIT licensed."
 FileDescription = "Automatically disables the winkey in video games"
-ProductName = "Auto Winkey"
+ProductName = "Winkey Lock"
 
 [profile.release-fast]
 inherits = "release"

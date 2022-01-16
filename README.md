@@ -16,7 +16,7 @@ Readme template copied from https://github.com/othneildrew/Best-README-Template
     <img src="dev/icon.png" alt="Logo" width="80" height="80">
   </a>
 
-<h3 align="center">Auto Winkey</h3>
+<h3 align="center">Winkey Lock</h3>
   <p align="center">
     Automatically enable/disable the windows key when you're in a game or any app that is too busy for notifications.
     <br />
