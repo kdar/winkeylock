@@ -12,7 +12,7 @@ Readme template copied from https://github.com/othneildrew/Best-README-Template
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/kdar/autowinkey">
+  <a href="https://github.com/kdar/winkeylock">
     <img src="dev/icon.png" alt="Logo" width="80" height="80">
   </a>
 
@@ -21,9 +21,9 @@ Readme template copied from https://github.com/othneildrew/Best-README-Template
     Automatically enable/disable the windows key when you're in a game or any app that is too busy for notifications.
     <br />
     <br />
-    <a href="https://github.com/kdar/autowinkey/issues">Report Bug</a>
+    <a href="https://github.com/kdar/winkeylock/issues">Report Bug</a>
     ·
-    <a href="https://github.com/kdar/autowinkey/issues">Request Feature</a>
+    <a href="https://github.com/kdar/winkeylock/issues">Request Feature</a>
   </p>
 </div>
 
@@ -84,15 +84,15 @@ Distributed under the MIT License. See `LICENSE` for more information.
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 
 [contributors-shield]: https://img.shields.io/github/contributors/github_username/repo_name.svg?style=for-the-badge
-[contributors-url]: https://github.com/kdar/autowinkey/graphs/contributors
+[contributors-url]: https://github.com/kdar/winkeylock/graphs/contributors
 [forks-shield]: https://img.shields.io/github/forks/github_username/repo_name.svg?style=for-the-badge
-[forks-url]: https://github.com/kdar/autowinkey/network/members
+[forks-url]: https://github.com/kdar/winkeylock/network/members
 [stars-shield]: https://img.shields.io/github/stars/github_username/repo_name.svg?style=for-the-badge
-[stars-url]: https://github.com/kdar/autowinkey/stargazers
+[stars-url]: https://github.com/kdar/winkeylock/stargazers
 [issues-shield]: https://img.shields.io/github/issues/github_username/repo_name.svg?style=for-the-badge
-[issues-url]: https://github.com/kdar/autowinkey/issues
+[issues-url]: https://github.com/kdar/winkeylock/issues
 [license-shield]: https://img.shields.io/github/license/github_username/repo_name.svg?style=for-the-badge
-[license-url]: https://github.com/kdar/autowinkey/blob/master/LICENSE.txt
+[license-url]: https://github.com/kdar/winkeylock/blob/master/LICENSE.txt
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://linkedin.com/in/linkedin_username
 [product-screenshot]: images/screenshot.png

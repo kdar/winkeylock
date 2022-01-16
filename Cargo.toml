@@ -1,9 +1,17 @@
 [package]
-name = "autowinkey"
+name = "winkeylock"
 version = "0.1.0"
 edition = "2021"
-author = "Kevin Darlington <kevin@outroot.com>"
+authors = ["Kevin Darlington <kevin@outroot.com>"]
+readme = "README.md"
+repository = "https://github.com/kdar/winkeylock"
+homepage = "https://github.com/kdar/winkeylock"
+description = """
+Automatically enable/disable the windows key when you're in a game or any app that is too busy for notifications.
+"""
+keywords = ["windows", "winkey"]
 build = "build.rs"
+exclude = ["/dev/*"]
 
 [dependencies]
 once_cell = "1.9.0"
@@ -33,7 +41,12 @@ features = [
 [features]
 
 [package.metadata.winres]
-OriginalFilename = "autowinkey.exe"
+OriginalFilename = "winkeylock.exe"
 LegalCopyright = "Copyright 2022 Kevin Darlington. MIT licensed."
 FileDescription = "Automatically disables the winkey in video games"
 ProductName = "Auto Winkey"
+
+[profile.release-fast]
+inherits = "release"
+lto = true
+codegen-units = 1

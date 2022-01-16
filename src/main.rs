@@ -21,7 +21,7 @@ mod autostart;
 mod disable_winkey;
 mod wide_string;
 
-const APP_NAME: &str = "autowinkey";
+const APP_NAME: &str = "winkeylock";
 
 fn main() -> wry::Result<()> {
   let mut autostart_enabled = autostart::check(APP_NAME);
