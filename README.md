@@ -34,6 +34,11 @@ Readme template copied from https://github.com/othneildrew/Best-README-Template
     <li><a href="#about-the-project">About The Project</a></li>
     <li><a href="#installation">Installation</a></li>
     <li><a href="#usage">Usage</a></li>
+    <li>
+      <ul>
+        <li><a href="#config">Configuration</a></li>
+      </ul>
+    </li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
   </ol>
@@ -65,6 +70,12 @@ Run the application and you should see the icon in the system tray. Now, hit the
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 <!-- CONTRIBUTING -->
+
+### Configuration
+
+Right click the icon in the system tray for configuration options. Currently there is one: auto start when windows starts.
+
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Contributing
 
