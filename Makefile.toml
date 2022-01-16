@@ -1,0 +1,41 @@
+[config]
+reduce_output = false
+skip_core_tasks = true
+
+[tasks.build-fast]
+command = "cargo"
+args = ["build", "--profile", "release-fast"]
+
+[tasks.tag]
+command = "git"
+args = ["tag", "-a", "v${CARGO_MAKE_PROJECT_VERSION}", "-m", "v${CARGO_MAKE_PROJECT_VERSION}"]
+ignore_errors = true
+
+[tasks.gh-release]
+script_runner = "@shell"
+# condition = { fail_message = "Please commit your changes before creating a release." }
+# condition_script = ["""
+#   git diff --quiet -- "src/*"
+# """]
+script = """
+gh release create v${CARGO_MAKE_PROJECT_VERSION} target/release-fast/winkeylock.exe --generate-notes
+"""
+dependencies = ["tag", "build-fast"]
+
+[tasks.test]
+condition = { fail_message = "Please commit your changes before creating a release." }
+condition_script = [ 
+"""
+@echo off
+git diff --quiet
+"""
+]
+command = "echo"
+args = ["success"]
+
+[tasks.echo]
+script = "echo ${TMP}"
+
+
+[tasks.default]
+alias = "build-fast"

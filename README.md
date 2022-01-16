@@ -56,7 +56,7 @@ The main motivation behind this project is preventing the windows key from ruini
 
 ## Installation
 
-1. Download the release
+1. Download the [release](https://github.com/kdar/winkeylock/releases/latest).
 2. Run
 
 <p align="right">(<a href="#top">back to top</a>)</p>
