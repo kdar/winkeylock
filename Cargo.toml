@@ -43,7 +43,7 @@ features = [
 [package.metadata.winres]
 OriginalFilename = "winkeylock.exe"
 LegalCopyright = "Copyright 2022 Kevin Darlington. MIT licensed."
-FileDescription = "Automatically disables the winkey in video games"
+FileDescription = "Winkey Lock"
 ProductName = "Winkey Lock"
 
 [profile.release-fast]
