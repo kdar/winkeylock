@@ -7,8 +7,15 @@ command = "cargo"
 args = ["build", "--profile", "release-fast"]
 
 [tasks.tag]
+script_runner = "@shell"
 command = "git"
-args = ["tag", "-a", "v${CARGO_MAKE_PROJECT_VERSION}", "-m", "v${CARGO_MAKE_PROJECT_VERSION}"]
+args = [
+  "tag",
+  "-a",
+  "v${CARGO_MAKE_PROJECT_VERSION}",
+  "-m",
+  "v${CARGO_MAKE_PROJECT_VERSION}",
+]
 ignore_errors = true
 
 [tasks.gh-release]
@@ -24,17 +31,16 @@ dependencies = ["tag", "build-fast"]
 
 [tasks.test]
 condition = { fail_message = "Please commit your changes before creating a release." }
-condition_script = [ 
-"""
+condition_script = ["""
 @echo off
 git diff --quiet
-"""
-]
+"""]
 command = "echo"
 args = ["success"]
 
 [tasks.echo]
-script = "echo ${TMP}"
+script_runner = "@shell"
+script = "echo v${CARGO_MAKE_PROJECT_VERSION}"
 
 
 [tasks.default]
