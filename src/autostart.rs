@@ -1,16 +1,15 @@
-use std::{env, iter, os::windows::ffi::OsStrExt, ptr};
+use std::env;
 use windows::{
   core::Error as WinError,
   Win32::{
     Foundation::{ERROR_MORE_DATA, ERROR_SUCCESS},
     System::Registry::{
       RegCloseKey, RegCreateKeyExW, RegGetValueW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
-      KEY_CREATE_SUB_KEY, KEY_SET_VALUE, REG_SZ, RRF_RT_REG_SZ,
+      KEY_CREATE_SUB_KEY, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, RRF_RT_REG_SZ,
     },
   },
 };
 
-pub use windows::Win32::Foundation::ERROR_ACCESS_DENIED;
 use windows::Win32::System::Registry::{RegDeleteValueW, RegOpenKeyExW};
 
 use crate::wide_string::ToWide;
@@ -24,32 +23,29 @@ pub fn add(app_name: &str) -> Result<(), WinError> {
     let res = RegCreateKeyExW(
       HKEY_CURRENT_USER,
       AUTOSTART_SUBKEY.to_wide().as_pwstr(),
-      0,
       None,
-      0,
+      None,
+      REG_OPTION_NON_VOLATILE,
       KEY_CREATE_SUB_KEY | KEY_SET_VALUE,
-      std::ptr::null(),
+      None,
       &mut hkey,
-      std::ptr::null_mut(),
+      None,
     );
     if res != ERROR_SUCCESS {
       return Err(WinError::from_win32());
     }
 
-    let path = env::current_exe()
+    let lpdata: Vec<u8> = env::current_exe()
       .unwrap()
-      .as_os_str()
-      .encode_wide()
-      .chain(iter::once(0))
-      .collect::<Vec<u16>>();
-
+      .to_str()
+      .unwrap()
+      .to_wide_u8_vec();
     match RegSetValueExW(
       hkey,
       app_name.to_wide().as_pwstr(),
-      0,
+      None,
       REG_SZ,
-      path.as_ptr() as *const _,
-      path.len() as u32 * 2,
+      Some(&lpdata),
     ) {
       ERROR_SUCCESS => Ok(()),
       _ => Err(WinError::from_win32()),
@@ -65,9 +61,9 @@ pub fn check(app_name: &str) -> bool {
         AUTOSTART_SUBKEY.to_wide().as_pwstr(),
         app_name.to_wide().as_pwstr(),
         RRF_RT_REG_SZ,
-        ptr::null_mut(),
-        ptr::null_mut(),
-        ptr::null_mut()
+        None,
+        None,
+        None
       ),
       ERROR_SUCCESS | ERROR_MORE_DATA
     )
@@ -81,7 +77,7 @@ pub fn remove(app_name: &str) -> Result<(), WinError> {
     if RegOpenKeyExW(
       HKEY_CURRENT_USER,
       AUTOSTART_SUBKEY.to_wide().as_pwstr(),
-      0,
+      None,
       KEY_SET_VALUE,
       &mut hkey,
     ) != ERROR_SUCCESS

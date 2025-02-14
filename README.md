@@ -65,7 +65,11 @@ The main motivation behind this project is preventing the windows key from ruini
 
 ## Usage
 
-Run the application and you should see the icon in the system tray. Now, hit the windows key outside of a game and the windows menu should come up. Do it inside of the game and it should be supressed! If it doesn't, please open an [issue](https://img.shields.io/github/issues).
+Run the application and you should see the icon in the system tray. Now, hit the windows key outside of a game and the windows menu should come up. Do it inside of the game and it should be supressed!
+
+Some games run in elevated privileges (like Marvel Rivals) and require you to also run Winkey Lock as administrator to work properly. You can either right click the app icon in Explorer and click "Run as administrator", or right click the icon in the system tray and click "Run as administrator". To always run it as administrator, right click the app icon in Explorer, click Properties, go to the Compatibility tab, and check "Run this program as an administrator".
+
+If it doesn't, please open an [issue](https://img.shields.io/github/issues).
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -73,7 +77,7 @@ Run the application and you should see the icon in the system tray. Now, hit the
 
 ### Configuration
 
-Right click the icon in the system tray for configuration options. Currently there is one: auto start when windows starts.
+Right click the icon in the system tray for configuration options.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 

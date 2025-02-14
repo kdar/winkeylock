@@ -2,7 +2,7 @@ use once_cell::sync::OnceCell;
 use windows::{
   core::Error as WinError,
   Win32::{
-    Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM},
+    Foundation::{LPARAM, LRESULT, WPARAM},
     UI::{
       Input::KeyboardAndMouse::{VIRTUAL_KEY, VK_LWIN},
       Shell::{SHQueryUserNotificationState, QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN},
@@ -14,12 +14,20 @@ use windows::{
   },
 };
 
-static KEYBOARD_HOOK: OnceCell<HHOOK> = OnceCell::new();
+#[derive(Debug)]
+struct UnsafePtr {
+  ptr: *mut core::ffi::c_void,
+}
+
+unsafe impl Send for UnsafePtr {}
+unsafe impl Sync for UnsafePtr {}
+
+static KEYBOARD_HOOK: OnceCell<UnsafePtr> = OnceCell::new();
 
 extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
   let ev = unsafe { *(lparam.0 as *const KBDLLHOOKSTRUCT) };
 
-  match (ev.vkCode as VIRTUAL_KEY, wparam.0 as u32) {
+  match (VIRTUAL_KEY(ev.vkCode as u16), wparam.0 as u32) {
     (VK_LWIN, WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) => {
       let state = unsafe { SHQueryUserNotificationState().unwrap() };
       // This is a bit hacky as it will probably disable the winkey in other applications in which
@@ -31,18 +39,28 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
     _ => {},
   };
 
-  unsafe { CallNextHookEx(KEYBOARD_HOOK.get().unwrap(), code, wparam, lparam) }
+  unsafe {
+    CallNextHookEx(
+      Some(HHOOK(KEYBOARD_HOOK.get().unwrap().ptr)),
+      code,
+      wparam,
+      lparam,
+    )
+  }
 }
 
 pub(crate) fn attach() {
-  let hhk =
-    unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook), HINSTANCE::default(), 0) };
-  KEYBOARD_HOOK.set(hhk).unwrap();
+  let hhk = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook), None, 0) };
+  KEYBOARD_HOOK
+    .set(UnsafePtr {
+      ptr: hhk.unwrap().0,
+    })
+    .unwrap();
 }
 
 pub(crate) fn detach() -> Result<(), WinError> {
-  if unsafe { UnhookWindowsHookEx(KEYBOARD_HOOK.get().unwrap()) }.0 == 0 {
-    return Err(WinError::from_win32());
+  unsafe {
+    UnhookWindowsHookEx(HHOOK(KEYBOARD_HOOK.get().unwrap().ptr))?;
   }
 
   Ok(())
