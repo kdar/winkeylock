@@ -12,10 +12,14 @@ use tao::{
   event_loop::{ControlFlow, EventLoopBuilder},
 };
 use tray_icon::{
-  menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem},
   MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent,
+  menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem},
 };
-use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR};
+use windows::Win32::{
+  Foundation::{ERROR_ALREADY_EXISTS, GetLastError},
+  System::Threading::CreateMutexW,
+  UI::WindowsAndMessaging::{MB_ICONERROR, MessageBoxW},
+};
 use windows_strings::w;
 
 use wide_string::ToWide;
@@ -40,7 +44,43 @@ fn elevate() -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
+fn already_running() -> Result<bool, Box<dyn Error>> {
+  let mutex_name = env!("CARGO_CRATE_NAME").to_wide();
+
+  unsafe {
+    let handle = CreateMutexW(
+      None,                  // Default security attributes
+      false.into(),          // Do not acquire ownership immediately
+      mutex_name.as_pwstr(), // Name of the mutex
+    )?;
+
+    if handle.is_invalid() {
+      return Err("failed to create mutex".into());
+    }
+
+    if GetLastError() == ERROR_ALREADY_EXISTS {
+      return Ok(true);
+    }
+  }
+
+  Ok(false)
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+  match already_running() {
+    Ok(true) => return Ok(()),
+    Ok(_) => (),
+    Err(e) => unsafe {
+      MessageBoxW(
+        None,
+        format!("{:?}", e).to_wide().as_pwstr(),
+        w!("Error with creating global mutex"),
+        MB_ICONERROR,
+      );
+      return Err(e);
+    },
+  };
+
   let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
 
   // set a tray event handler that forwards the event and wakes up the event loop
@@ -116,8 +156,8 @@ fn main() -> Result<(), Box<dyn Error>> {
               Err(e) => unsafe {
                 MessageBoxW(
                   None,
-                  w!("Error removing autostart"),
                   format!("{:?}", e.message()).to_wide().as_pwstr(),
+                  w!("Error removing autostart"),
                   MB_ICONERROR,
                 );
               },
@@ -130,8 +170,8 @@ fn main() -> Result<(), Box<dyn Error>> {
               Err(e) => unsafe {
                 MessageBoxW(
                   None,
-                  "Error adding autostart".to_wide().as_pwstr(),
                   format!("{:?}", e.message()).to_wide().as_pwstr(),
+                  "Error adding autostart".to_wide().as_pwstr(),
                   MB_ICONERROR,
                 );
               },
@@ -147,8 +187,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             Err(e) => unsafe {
               MessageBoxW(
                 None,
-                w!("Error elevating permissions"),
                 format!("{:?}", e).to_wide().as_pwstr(),
+                w!("Error elevating permissions"),
                 MB_ICONERROR,
               );
             },

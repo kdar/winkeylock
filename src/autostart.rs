@@ -1,13 +1,13 @@
 use std::env;
 use windows::{
-  core::Error as WinError,
   Win32::{
     Foundation::{ERROR_MORE_DATA, ERROR_SUCCESS},
     System::Registry::{
-      RegCloseKey, RegCreateKeyExW, RegGetValueW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
-      KEY_CREATE_SUB_KEY, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, RRF_RT_REG_SZ,
+      HKEY, HKEY_CURRENT_USER, KEY_CREATE_SUB_KEY, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ,
+      RRF_RT_REG_SZ, RegCloseKey, RegCreateKeyExW, RegGetValueW, RegSetValueExW,
     },
   },
+  core::Error as WinError,
 };
 
 use windows::Win32::System::Registry::{RegDeleteValueW, RegOpenKeyExW};
@@ -32,7 +32,7 @@ pub fn add(app_name: &str) -> Result<(), WinError> {
       None,
     );
     if res != ERROR_SUCCESS {
-      return Err(WinError::from_win32());
+      return Err(WinError::from_thread());
     }
 
     let lpdata: Vec<u8> = env::current_exe()
@@ -48,7 +48,7 @@ pub fn add(app_name: &str) -> Result<(), WinError> {
       Some(&lpdata),
     ) {
       ERROR_SUCCESS => Ok(()),
-      _ => Err(WinError::from_win32()),
+      _ => Err(WinError::from_thread()),
     }
   }
 }
@@ -82,15 +82,15 @@ pub fn remove(app_name: &str) -> Result<(), WinError> {
       &mut hkey,
     ) != ERROR_SUCCESS
     {
-      return Err(WinError::from_win32());
+      return Err(WinError::from_thread());
     }
 
     if RegDeleteValueW(hkey, app_name.to_wide().as_pwstr()) != ERROR_SUCCESS {
-      return Err(WinError::from_win32());
+      return Err(WinError::from_thread());
     }
 
     if RegCloseKey(hkey) != ERROR_SUCCESS {
-      return Err(WinError::from_win32());
+      return Err(WinError::from_thread());
     }
 
     Ok(())

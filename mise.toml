@@ -1,0 +1,21 @@
+# windows_default_inline_shell_args = "cmd"
+
+[tasks.build-fast]
+run = '''
+cargo build --profile release-fast
+'''
+
+[tasks.tag]
+shell = "powershell -Command"
+run = '''
+$env:VERSION=cargo get package.version
+git tag -a v$env:VERSION -m v$env:VERSION
+'''
+
+[tasks.gh-release]
+shell = "powershell -Command"
+run = '''
+$env:VERSION=cargo get package.version
+gh release create v${CARGO_MAKE_PROJECT_VERSION} target/release-fast/winkeylock.exe --generate-notes
+'''
+depends = ["tag", "build-fast"]
