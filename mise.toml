@@ -1,14 +1,22 @@
-# windows_default_inline_shell_args = "cmd"
-
 [tasks.build-fast]
+shell = 'powershell -Command'
 run = '''
 cargo build --profile release-fast
 '''
+
+[tasks.kill]
+shell = "powershell -Command"
+run = 'if (Get-Process winkeylock -ErrorAction SilentlyContinue) { taskkill /IM winkeylock.exe /F }'
+
+[tasks.build-run]
+depends = ["kill", "build-fast"]
+run = 'target\release-fast\winkeylock.exe'
 
 [tasks.tag]
 shell = "powershell -Command"
 run = '''
 $env:VERSION=cargo get package.version
+git tag --delete v$env:VERSION
 git tag -a v$env:VERSION -m v$env:VERSION
 '''
 
@@ -16,6 +24,7 @@ git tag -a v$env:VERSION -m v$env:VERSION
 shell = "powershell -Command"
 run = '''
 $env:VERSION=cargo get package.version
-gh release create v${CARGO_MAKE_PROJECT_VERSION} target/release-fast/winkeylock.exe --generate-notes
+git push origin v$env:VERSION
+gh release create v$env:VERSION target/release-fast/winkeylock.exe --generate-notes
 '''
 depends = ["tag", "build-fast"]
