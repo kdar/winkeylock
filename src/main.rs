@@ -25,6 +25,7 @@ use windows_strings::w;
 use wide_string::ToWide;
 
 mod autostart;
+mod config;
 mod disable_winkey;
 mod wide_string;
 
@@ -105,13 +106,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     autostart::check(APP_NAME),
     None,
   );
+  let config_i = MenuItem::new("Open configuration", true, None);
 
   let quit_i = MenuItem::new("Quit", true, None);
   tray_menu.append_items(&[&autorun_i])?;
   if !ECommand::is_elevated() {
     tray_menu.append(&elevate_i)?;
   }
-  tray_menu.append_items(&[&PredefinedMenuItem::separator(), &quit_i])?;
+  tray_menu.append_items(&[&PredefinedMenuItem::separator(), &config_i, &quit_i])?;
 
   let mut tray_icon = None;
 
@@ -193,6 +195,29 @@ fn main() -> Result<(), Box<dyn Error>> {
               );
             },
           };
+        } else if event.id == config_i.id() {
+          let config_path = disable_winkey::get_config_path();
+
+          // Ensure config file exists
+          if !config_path.exists() {
+            let default_config = config::KeyConfig::default();
+            default_config.save();
+          }
+
+          // Open the config file with the default editor
+          match Command::new("open").arg(&config_path).spawn() {
+            Ok(_) => {},
+            Err(e) => unsafe {
+              MessageBoxW(
+                None,
+                format!("Failed to open configuration file: {:?}", e)
+                  .to_wide()
+                  .as_pwstr(),
+                w!("Error opening config"),
+                MB_ICONERROR,
+              );
+            },
+          }
         } else if event.id == quit_i.id() {
           *control_flow = ControlFlow::Exit;
           tray_icon.take();
