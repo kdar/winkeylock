@@ -205,7 +205,7 @@ fn main() -> Result<(), Box<dyn Error>> {
           }
 
           // Open the config file with the default editor
-          match Command::new("open").arg(&config_path).spawn() {
+          match opener::open(&config_path) {
             Ok(_) => {},
             Err(e) => unsafe {
               MessageBoxW(
