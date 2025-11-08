@@ -19,7 +19,7 @@ use windows::{
   core::Error as WinError,
 };
 
-use crate::config::KeyConfig;
+use crate::config::ConfigManager;
 
 static SHIFT_DOWN: AtomicBool = AtomicBool::new(false);
 static CTRL_DOWN: AtomicBool = AtomicBool::new(false);
@@ -35,7 +35,7 @@ unsafe impl Send for UnsafePtr {}
 unsafe impl Sync for UnsafePtr {}
 
 static KEYBOARD_HOOK: OnceCell<UnsafePtr> = OnceCell::new();
-static CONFIG: OnceCell<KeyConfig> = OnceCell::new();
+static CONFIG_MANAGER: OnceCell<ConfigManager> = OnceCell::new();
 
 extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
   if code < 0 {
@@ -65,8 +65,8 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
 
   // Only check configuration for key down events
   if is_keydown {
-    if let Some(config) = CONFIG.get() {
-      if config.should_block(vk, shift, ctrl, alt, win) {
+    if let Some(config_manager) = CONFIG_MANAGER.get() {
+      if config_manager.should_block(vk, shift, ctrl, alt, win) {
         // Check notification state for backwards compatibility
         let state = unsafe { SHQueryUserNotificationState().unwrap_or(QUNS_BUSY) };
         if state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN {
@@ -96,8 +96,17 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
 }
 
 pub(crate) fn attach() {
-  // Initialize configuration
-  CONFIG.set(KeyConfig::load()).unwrap();
+  // Initialize configuration manager with file watching
+  match ConfigManager::new() {
+    Ok(config_manager) => {
+      CONFIG_MANAGER.set(config_manager).unwrap();
+      println!("Configuration manager initialized with file watching");
+    },
+    Err(e) => {
+      eprintln!("Failed to initialize config manager: {}", e);
+      eprintln!("Continuing with fallback behavior");
+    },
+  }
 
   let hhk = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook), None, 0) };
   KEYBOARD_HOOK
@@ -126,8 +135,13 @@ pub(crate) fn detach() -> Result<(), WinError> {
 // }
 
 pub(crate) fn get_config_path() -> std::path::PathBuf {
-  let mut path = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-  path.push("winkeylock");
-  path.push("config.json");
-  path
+  if let Some(config_manager) = CONFIG_MANAGER.get() {
+    config_manager.get_config_path()
+  } else {
+    // Fallback if config manager not initialized
+    let mut path = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    path.push("winkeylock");
+    path.push("config.json");
+    path
+  }
 }

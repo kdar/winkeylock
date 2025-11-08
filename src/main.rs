@@ -113,7 +113,7 @@ fn main() -> Result<(), Box<dyn Error>> {
   if !ECommand::is_elevated() {
     tray_menu.append(&elevate_i)?;
   }
-  tray_menu.append_items(&[&PredefinedMenuItem::separator(), &config_i, &quit_i])?;
+  tray_menu.append_items(&[&config_i, &PredefinedMenuItem::separator(), &quit_i])?;
 
   let mut tray_icon = None;
 

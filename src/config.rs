@@ -1,5 +1,13 @@
+use notify::{Event, EventKind, RecursiveMode, Watcher};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{
+  collections::HashMap,
+  fs,
+  path::PathBuf,
+  sync::{Arc, RwLock, mpsc},
+  thread,
+  time::Duration,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
   VK_0, VK_1, VK_2, VK_3, VK_4, VK_5, VK_6, VK_7, VK_8, VK_9, VK_A, VK_B, VK_BACK, VK_C,
   VK_CAPITAL, VK_D, VK_DELETE, VK_DOWN, VK_E, VK_END, VK_ESCAPE, VK_F, VK_F1, VK_F2, VK_F3, VK_F4,
@@ -243,7 +251,7 @@ impl Default for KeyConfig {
 
     Self {
       // Default: block Windows key by itself
-      blacklist: vec![parse("lwin"), parse("rwin")],
+      blacklist: vec![parse("lwin")],
       whitelist: vec![],
     }
   }
@@ -322,8 +330,98 @@ impl KeyConfig {
 
   fn config_path() -> PathBuf {
     let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    path.push("lwinkeylock");
+    path.push("winkeylock");
     path.push("config.json");
     path
+  }
+}
+
+/// Dynamic config manager that supports live reloading
+#[derive(Debug)]
+pub struct ConfigManager {
+  config: Arc<RwLock<KeyConfig>>,
+  // We don't store the watcher here to avoid Send/Sync issues
+  // The watcher runs in its own thread
+}
+
+impl ConfigManager {
+  pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    let config = Arc::new(RwLock::new(KeyConfig::load()));
+    let config_clone = Arc::clone(&config);
+
+    let (tx, rx) = mpsc::channel();
+
+    let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+      match res {
+        Ok(event) => {
+          if let Err(e) = tx.send(event) {
+            eprintln!("Failed to send file watch event: {}", e);
+          }
+        },
+        Err(e) => eprintln!("File watch error: {}", e),
+      }
+    })?;
+
+    let config_path = KeyConfig::config_path();
+    if let Some(config_dir) = config_path.parent() {
+      // Watch the directory containing the config file
+      watcher.watch(config_dir, RecursiveMode::NonRecursive)?;
+    }
+
+    // Spawn a thread to handle file change events
+    // We move the watcher into this thread to avoid Send/Sync issues
+    thread::spawn(move || {
+      let mut last_reload = std::time::Instant::now();
+
+      // Keep the watcher alive in this thread
+      let _watcher = watcher;
+
+      for event in rx {
+        match event.kind {
+          EventKind::Create(_) | EventKind::Modify(_) => {
+            // Check if the event is for our config file
+            if event.paths.iter().any(|p| p.ends_with("config.json")) {
+              // Debounce rapid file changes (editors often create multiple events)
+              let now = std::time::Instant::now();
+              if now.duration_since(last_reload) > Duration::from_millis(500) {
+                last_reload = now;
+
+                // Small delay to ensure file write is complete
+                thread::sleep(Duration::from_millis(100));
+
+                match KeyConfig::load() {
+                  config => {
+                    if let Ok(mut current_config) = config_clone.write() {
+                      *current_config = config;
+                      println!("Configuration reloaded successfully");
+                    } else {
+                      eprintln!("Failed to acquire write lock for config reload");
+                    }
+                  },
+                }
+              }
+            }
+          },
+          _ => {},
+        }
+      }
+    });
+
+    Ok(Self {
+      config,
+    })
+  }
+
+  pub fn should_block(&self, key: u16, shift: bool, ctrl: bool, alt: bool, win: bool) -> bool {
+    if let Ok(config) = self.config.read() {
+      config.should_block(key, shift, ctrl, alt, win)
+    } else {
+      eprintln!("Failed to acquire read lock for config");
+      false // Default to not blocking if we can't read config
+    }
+  }
+
+  pub fn get_config_path(&self) -> PathBuf {
+    KeyConfig::config_path()
   }
 }
