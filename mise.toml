@@ -4,13 +4,19 @@ run = '''
 cargo build --profile release-fast
 '''
 
+[tasks.build]
+shell = 'powershell -Command'
+run = '''
+cargo build --release
+'''
+
 [tasks.kill]
 shell = "powershell -Command"
 run = 'if (Get-Process winkeylock -ErrorAction SilentlyContinue) { taskkill /IM winkeylock.exe /F }'
 
 [tasks.build-run]
-depends = ["kill", "build-fast"]
-run = 'target\release-fast\winkeylock.exe'
+depends = ["kill", "build"]
+run = 'target\release\winkeylock.exe'
 
 [tasks.tag]
 shell = "powershell -Command"
@@ -28,3 +34,10 @@ git push origin v$env:VERSION
 gh release create v$env:VERSION target/release-fast/winkeylock.exe --generate-notes
 '''
 depends = ["tag", "build-fast"]
+
+[tasks.remove-unused]
+run = '''
+cargo install cargo-shear && cargo shear && cargo install cargo-features-manager && cargo features prune
+'''
+# also cargo install cargo-machete && cargo machete
+# or cargo install cargo-udeps --locked && cargo udeps

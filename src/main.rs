@@ -26,6 +26,7 @@ use wide_string::ToWide;
 
 mod autostart;
 mod config;
+mod config_ui;
 mod disable_winkey;
 mod wide_string;
 
@@ -68,6 +69,16 @@ fn already_running() -> Result<bool, Box<dyn Error>> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+  // Check if we should run the config UI
+  let args: Vec<String> = env::args().collect();
+  if args.iter().any(|arg| arg == "--config-ui") {
+    if let Err(e) = config_ui::run_config_ui_main() {
+      eprintln!("Failed to run config UI: {}", e);
+      std::process::exit(1);
+    }
+    return Ok(());
+  }
+
   match already_running() {
     Ok(true) => return Ok(()),
     Ok(_) => (),
@@ -196,28 +207,27 @@ fn main() -> Result<(), Box<dyn Error>> {
             },
           };
         } else if event.id == config_i.id() {
-          let config_path = disable_winkey::get_config_path();
+          // Launch the config UI in a separate thread
+          std::thread::spawn(|| {
+            match config_ui::launch_config_ui() {
+              Ok(_) => {},
+              Err(e) => {
+                eprintln!("Failed to launch config UI: {}", e);
+                // Fallback: open the config file with the default editor
+                let config_path = disable_winkey::get_config_path();
 
-          // Ensure config file exists
-          if !config_path.exists() {
-            let default_config = config::KeyConfig::default();
-            default_config.save();
-          }
+                // Ensure config file exists
+                if !config_path.exists() {
+                  let default_config = config::KeyConfig::default();
+                  default_config.save();
+                }
 
-          // Open the config file with the default editor
-          match opener::open(&config_path) {
-            Ok(_) => {},
-            Err(e) => unsafe {
-              MessageBoxW(
-                None,
-                format!("Failed to open configuration file: {:?}", e)
-                  .to_wide()
-                  .as_pwstr(),
-                w!("Error opening config"),
-                MB_ICONERROR,
-              );
-            },
-          }
+                if let Err(open_err) = opener::open(&config_path) {
+                  eprintln!("Failed to open config file as fallback: {}", open_err);
+                }
+              },
+            }
+          });
         } else if event.id == quit_i.id() {
           *control_flow = ControlFlow::Exit;
           tray_icon.take();
