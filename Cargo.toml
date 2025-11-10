@@ -1,6 +1,6 @@
 [package]
 name = "winkeylock"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 authors = ["Kevin Darlington <kevin@outroot.com>"]
 readme = "README.md"
@@ -31,7 +31,14 @@ winresource = { version = "0.1.27", default-features = false }
 
 [dependencies.windows]
 version = "0.62.2"
-features = ["Win32_Security", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"]
+features = [
+  "Win32_Security",
+  "Win32_System_Registry",
+  "Win32_System_Threading",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+]
 
 [features]
 
