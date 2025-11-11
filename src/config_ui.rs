@@ -13,6 +13,7 @@ pub enum Message {
   RemoveWhitelistKey(usize),
   BlacklistKeyInput(String),
   WhitelistKeyInput(String),
+  ToggleHelp,
   Save,
   Cancel,
   Close,
@@ -24,6 +25,7 @@ pub struct ConfigUI {
   blacklist_input: String,
   whitelist_input: String,
   error_message: Option<String>,
+  show_help: bool,
 }
 
 impl Application for ConfigUI {
@@ -39,6 +41,7 @@ impl Application for ConfigUI {
         blacklist_input: String::new(),
         whitelist_input: String::new(),
         error_message: None,
+        show_help: false,
       },
       Command::none(),
     )
@@ -94,6 +97,9 @@ impl Application for ConfigUI {
       Message::WhitelistKeyInput(input) => {
         self.whitelist_input = input;
       },
+      Message::ToggleHelp => {
+        self.show_help = !self.show_help;
+      },
       Message::Save => {
         self.config.save();
         return Command::perform(async {}, |_| Message::Close);
@@ -114,7 +120,39 @@ impl Application for ConfigUI {
       "Configure which keys should be blocked or allowed. \
             Examples: 'lwin', 'ctrl+c', 'shift+alt+tab'",
     )
-    .size(14);
+    .size(14)
+    .width(Length::Fill);
+
+    let help_button_label = if self.show_help {
+      "Hide Help"
+    } else {
+      "Show Help"
+    };
+
+    let help_button = button(help_button_label).on_press(Message::ToggleHelp);
+
+    let header = row![description, help_button]
+      .spacing(10)
+      .align_items(Alignment::Center);
+
+    let help_content: Element<Message> = if self.show_help {
+      container(
+        column![
+          text("How to enter key combinations").size(16),
+          text("Use '+' between each modifier and key, e.g. 'ctrl+shift+esc'.").size(13),
+          text("Supported modifiers: 'ctrl', 'alt', 'shift', 'lwin', 'rwin'.").size(13),
+          text("Finish with exactly one key name like 'c', 'f12', 'space', 'delete', etc.").size(13),
+          text("Names are case-insensitive; spaces around '+' are optional.").size(13),
+          text("Only one non-modifier key is allowed per combination.").size(13),
+        ]
+        .spacing(6),
+      )
+      .width(Length::Fill)
+      .padding(12)
+      .into()
+    } else {
+      Space::with_height(Length::Fixed(0.0)).into()
+    };
 
     // Blacklist section
     let blacklist_title = text("Blocked Keys (Blacklist)").size(18);
@@ -226,7 +264,8 @@ impl Application for ConfigUI {
     .align_items(Alignment::Center);
 
     let content = column![
-      description,
+      header,
+      help_content,
       Space::with_height(Length::Fixed(20.0)),
       blacklist_title,
       blacklist_description,
