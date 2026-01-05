@@ -1,7 +1,7 @@
-use crate::config::{KeyCombo, KeyConfig};
+use crate::config::{DetectMethod, KeyCombo, KeyConfig};
 use iced::{
   Alignment, Application, Command, Element, Length, Settings, Theme,
-  widget::{Space, button, column, container, row, scrollable, text, text_input},
+  widget::{Space, button, column, container, pick_list, row, scrollable, text, text_input},
 };
 use std::process;
 
@@ -13,6 +13,7 @@ pub enum Message {
   RemoveWhitelistKey(usize),
   BlacklistKeyInput(String),
   WhitelistKeyInput(String),
+  DetectMethodChanged(DetectMethod),
   ToggleHelp,
   Save,
   Cancel,
@@ -96,6 +97,9 @@ impl Application for ConfigUI {
       },
       Message::WhitelistKeyInput(input) => {
         self.whitelist_input = input;
+      },
+      Message::DetectMethodChanged(method) => {
+        self.config.detect_method = method;
       },
       Message::ToggleHelp => {
         self.show_help = !self.show_help;
@@ -242,6 +246,18 @@ impl Application for ConfigUI {
     .spacing(10)
     .align_items(Alignment::Center);
 
+    // Detect method section
+    let detect_method_title = text("Detection Method").size(18);
+    let detect_method_description =
+      text("How to detect if the focused window is a game").size(12);
+
+    let detect_method_picker = pick_list(
+      DetectMethod::ALL.as_slice(),
+      Some(self.config.detect_method),
+      Message::DetectMethodChanged,
+    )
+    .width(Length::Fill);
+
     // Error message
     let error_section: Element<Message> = if let Some(ref error) = self.error_message {
       text(error)
@@ -278,6 +294,11 @@ impl Application for ConfigUI {
       Space::with_height(Length::Fixed(10.0)),
       whitelist_items,
       whitelist_input_row,
+      Space::with_height(Length::Fixed(20.0)),
+      detect_method_title,
+      detect_method_description,
+      Space::with_height(Length::Fixed(10.0)),
+      detect_method_picker,
       Space::with_height(Length::Fixed(20.0)),
       error_section,
       action_buttons,

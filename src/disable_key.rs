@@ -3,7 +3,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use once_cell::sync::OnceCell;
 use windows::{
   Win32::{
-    Foundation::{LPARAM, LRESULT, WPARAM},
+    Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
+    Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow},
     UI::{
       Input::KeyboardAndMouse::{
         VIRTUAL_KEY, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_RCONTROL,
@@ -11,15 +12,16 @@ use windows::{
       },
       Shell::{QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState},
       WindowsAndMessaging::{
-        CallNextHookEx, HHOOK, KBDLLHOOKSTRUCT, SetWindowsHookExW, UnhookWindowsHookEx,
-        WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
+        CallNextHookEx, EnumChildWindows, GWL_STYLE, GetForegroundWindow, GetWindowLongPtrW,
+        GetWindowRect, HHOOK, KBDLLHOOKSTRUCT, SetWindowsHookExW, UnhookWindowsHookEx,
+        WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN, WS_CAPTION, WS_SYSMENU,
       },
     },
   },
-  core::Error as WinError,
+  core::{BOOL, Error as WinError},
 };
 
-use crate::config::ConfigManager;
+use crate::config::{ConfigManager, DetectMethod};
 
 static SHIFT_DOWN: AtomicBool = AtomicBool::new(false);
 static CTRL_DOWN: AtomicBool = AtomicBool::new(false);
@@ -36,6 +38,80 @@ unsafe impl Sync for UnsafePtr {}
 
 static KEYBOARD_HOOK: OnceCell<UnsafePtr> = OnceCell::new();
 static CONFIG_MANAGER: OnceCell<ConfigManager> = OnceCell::new();
+
+extern "system" fn enum_child_cb(_hwnd: HWND, lparam: LPARAM) -> BOOL {
+  unsafe {
+    // lparam points to our counter
+    let counter = &mut *(lparam.0 as *mut u32);
+    *counter += 1;
+  }
+  // TRUE = continue enumeration
+  BOOL(1)
+}
+
+pub fn count_child_windows(hwnd: HWND) -> u32 {
+  let mut count: u32 = 0;
+
+  unsafe {
+    _ = EnumChildWindows(
+      Some(hwnd),
+      Some(enum_child_cb),
+      LPARAM(&mut count as *mut _ as isize),
+    );
+  }
+
+  count
+}
+
+fn is_foreground_game_windowstyle() -> bool {
+  unsafe {
+    let hwnd = GetForegroundWindow();
+    if hwnd.is_invalid() {
+      return false;
+    }
+
+    let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+    let looks_like_game = (style & WS_SYSMENU.0) == 0 && (style & WS_CAPTION.0) == 0;
+    if !looks_like_game {
+      return false;
+    }
+
+    if count_child_windows(hwnd) > 0 {
+      return false;
+    }
+  }
+
+  true
+}
+
+pub fn is_foreground_fullscreen() -> bool {
+  unsafe {
+    let hwnd = GetForegroundWindow();
+    if hwnd.is_invalid() {
+      return false;
+    }
+
+    let mut win_rect = RECT::default();
+    if !GetWindowRect(hwnd, &mut win_rect).is_ok() {
+      return false;
+    }
+
+    let hmon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    let mut mi = MONITORINFO {
+      cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+      ..Default::default()
+    };
+
+    if !GetMonitorInfoW(hmon, &mut mi).as_bool() {
+      return false;
+    }
+
+    win_rect.left <= mi.rcMonitor.left
+      && win_rect.top <= mi.rcMonitor.top
+      && win_rect.right >= mi.rcMonitor.right
+      && win_rect.bottom >= mi.rcMonitor.bottom
+  }
+}
 
 extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
   if code < 0 {
@@ -67,11 +143,24 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
   if is_keydown {
     if let Some(config_manager) = CONFIG_MANAGER.get() {
       if config_manager.should_block(vk, shift, ctrl, alt, win) {
-        // Check notification state for backwards compatibility
-        let state = unsafe { SHQueryUserNotificationState().unwrap_or(QUNS_BUSY) };
-        if state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN {
-          return LRESULT(1);
-        }
+        match config_manager.detect_method() {
+          DetectMethod::NotificationState => {
+            let state = unsafe { SHQueryUserNotificationState().unwrap_or(QUNS_BUSY) };
+            if state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN {
+              return LRESULT(1);
+            }
+          },
+          DetectMethod::Fullscreen => {
+            if is_foreground_fullscreen() {
+              return LRESULT(1);
+            }
+          },
+          DetectMethod::WindowStyle => {
+            if is_foreground_game_windowstyle() {
+              return LRESULT(1);
+            }
+          },
+        };
       }
     } else {
       // Fallback to old behavior if config is not available

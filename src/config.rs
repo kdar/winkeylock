@@ -2,7 +2,7 @@ use notify::{Event, EventKind, RecursiveMode, Watcher};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
   collections::HashMap,
-  fs,
+  fmt, fs,
   path::PathBuf,
   sync::{Arc, RwLock, mpsc},
   thread,
@@ -236,12 +236,46 @@ impl<'de> Deserialize<'de> for KeyCombo {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DetectMethod {
+  #[default]
+  NotificationState,
+  Fullscreen,
+  WindowStyle,
+}
+
+impl DetectMethod {
+  pub const ALL: [DetectMethod; 3] = [
+    DetectMethod::NotificationState,
+    DetectMethod::Fullscreen,
+    DetectMethod::WindowStyle,
+  ];
+
+  pub fn display_name(&self) -> &'static str {
+    match self {
+      DetectMethod::NotificationState => "Notification State",
+      DetectMethod::Fullscreen => "Fullscreen",
+      DetectMethod::WindowStyle => "Window Style",
+    }
+  }
+}
+
+impl fmt::Display for DetectMethod {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "{}", self.display_name())
+  }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyConfig {
   /// Key combinations that should be blocked
   pub blacklist: Vec<KeyCombo>,
   /// Key combinations that should be explicitly allowed (overrides blacklist)
   pub whitelist: Vec<KeyCombo>,
+  /// Method used to detect if a window is a game
+  #[serde(default)]
+  pub detect_method: DetectMethod,
 }
 
 impl Default for KeyConfig {
@@ -253,6 +287,7 @@ impl Default for KeyConfig {
       // Default: block Windows key by itself
       blacklist: vec![parse("lwin")],
       whitelist: vec![],
+      detect_method: DetectMethod::default(),
     }
   }
 }
@@ -418,6 +453,15 @@ impl ConfigManager {
     } else {
       eprintln!("Failed to acquire read lock for config");
       false // Default to not blocking if we can't read config
+    }
+  }
+
+  pub fn detect_method(&self) -> DetectMethod {
+    if let Ok(config) = self.config.read() {
+      config.detect_method
+    } else {
+      eprintln!("Failed to acquire read lock for config");
+      DetectMethod::default()
     }
   }
 

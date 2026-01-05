@@ -27,7 +27,7 @@ use wide_string::ToWide;
 mod autostart;
 mod config;
 mod config_ui;
-mod disable_winkey;
+mod disable_key;
 mod wide_string;
 
 const APP_NAME: &str = "winkeylock";
@@ -128,7 +128,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
   let mut tray_icon = None;
 
-  disable_winkey::attach();
+  disable_key::attach();
 
   event_loop.run(move |event, _event_loop, control_flow| {
     *control_flow = ControlFlow::Wait;
@@ -145,7 +145,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         );
       },
       Event::LoopDestroyed => {
-        disable_winkey::detach().ok();
+        disable_key::detach().ok();
       },
       Event::UserEvent(UserEvent::TrayIconEvent(event)) => {
         match event {
@@ -214,7 +214,7 @@ fn main() -> Result<(), Box<dyn Error>> {
               Err(e) => {
                 eprintln!("Failed to launch config UI: {}", e);
                 // Fallback: open the config file with the default editor
-                let config_path = disable_winkey::get_config_path();
+                let config_path = disable_key::get_config_path();
 
                 // Ensure config file exists
                 if !config_path.exists() {
