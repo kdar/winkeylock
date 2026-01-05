@@ -4414,7 +4414,7 @@ dependencies = [
 
 [[package]]
 name = "winkeylock"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "dirs",
  "elevated-command",
