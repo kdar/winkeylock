@@ -7,14 +7,15 @@ use windows::{
     Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow},
     UI::{
       Input::KeyboardAndMouse::{
-        VIRTUAL_KEY, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_RCONTROL,
-        VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT,
+        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
+        SendInput, VIRTUAL_KEY, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU,
+        VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT,
       },
       Shell::{QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState},
       WindowsAndMessaging::{
         CallNextHookEx, EnumChildWindows, GWL_STYLE, GetForegroundWindow, GetWindowLongPtrW,
         GetWindowRect, HHOOK, KBDLLHOOKSTRUCT, SetWindowsHookExW, UnhookWindowsHookEx,
-        WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN, WS_CAPTION, WS_SYSMENU,
+        WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WS_CAPTION, WS_SYSMENU,
       },
     },
   },
@@ -27,6 +28,10 @@ static SHIFT_DOWN: AtomicBool = AtomicBool::new(false);
 static CTRL_DOWN: AtomicBool = AtomicBool::new(false);
 static ALT_DOWN: AtomicBool = AtomicBool::new(false);
 static WIN_DOWN: AtomicBool = AtomicBool::new(false);
+
+// Track if another key was pressed while a modifier was held
+// If true, the modifier was used in a combo and shouldn't be blocked on keyup
+static WIN_USED_IN_COMBO: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug)]
 struct UnsafePtr {
@@ -123,14 +128,24 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
   let msg = wparam.0 as u32;
 
   let is_keydown = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
-  // let is_keyup = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+  let is_keyup = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+
+  let is_win_key = matches!(VIRTUAL_KEY(vk), VK_LWIN | VK_RWIN);
 
   // Update modifier key states
   match VIRTUAL_KEY(vk) {
     VK_LSHIFT | VK_RSHIFT | VK_SHIFT => SHIFT_DOWN.store(is_keydown, Ordering::Relaxed),
     VK_LCONTROL | VK_RCONTROL | VK_CONTROL => CTRL_DOWN.store(is_keydown, Ordering::Relaxed),
     VK_LMENU | VK_RMENU | VK_MENU => ALT_DOWN.store(is_keydown, Ordering::Relaxed),
-    VK_LWIN | VK_RWIN => WIN_DOWN.store(is_keydown, Ordering::Relaxed),
+    VK_LWIN | VK_RWIN => {
+      if is_keydown {
+        WIN_DOWN.store(true, Ordering::Relaxed);
+        // Reset combo tracking when win key is pressed
+        WIN_USED_IN_COMBO.store(false, Ordering::Relaxed);
+      } else {
+        WIN_DOWN.store(false, Ordering::Relaxed);
+      }
+    },
     _ => {},
   };
 
@@ -139,36 +154,45 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
   let alt = ALT_DOWN.load(Ordering::Relaxed);
   let win = WIN_DOWN.load(Ordering::Relaxed);
 
-  // Only check configuration for key down events
-  if is_keydown {
-    if let Some(config_manager) = CONFIG_MANAGER.get() {
-      if config_manager.should_block(vk, shift, ctrl, alt, win) {
-        match config_manager.detect_method() {
-          DetectMethod::NotificationState => {
-            let state = unsafe { SHQueryUserNotificationState().unwrap_or(QUNS_BUSY) };
-            if state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN {
-              return LRESULT(1);
-            }
-          },
-          DetectMethod::Fullscreen => {
-            if is_foreground_fullscreen() {
-              return LRESULT(1);
-            }
-          },
-          DetectMethod::WindowStyle => {
-            if is_foreground_game_windowstyle() {
-              return LRESULT(1);
-            }
-          },
-        };
+  // If a non-modifier key is pressed while win is held, mark win as used in combo
+  if is_keydown && !is_win_key && win {
+    WIN_USED_IN_COMBO.store(true, Ordering::Relaxed);
+  }
+
+  if let Some(config_manager) = CONFIG_MANAGER.get() {
+    // For win key: check on keyup whether to cancel Start menu
+    // This allows win+X combos to work while blocking win alone
+    if is_win_key && is_keyup {
+      let win_used = WIN_USED_IN_COMBO.load(Ordering::Relaxed);
+
+      // If win was NOT used in a combo and should be blocked, inject Ctrl to cancel Start menu
+      if !win_used
+        && config_manager.should_block(vk, shift, ctrl, alt, false)
+        && should_block_in_current_context(config_manager)
+      {
+        // Inject a Ctrl key press+release to cancel the Start menu trigger
+        // This is a common technique - pressing any other key while Win is held cancels Start menu
+        inject_ctrl_tap();
       }
-    } else {
-      // Fallback to old behavior if config is not available
-      let is_win_key = vk == VK_LWIN.0 || vk == VK_RWIN.0;
-      if is_win_key && !(shift || ctrl || alt) {
+      // Always let the keyup through so the key doesn't get stuck
+    }
+
+    // For non-modifier keys on keydown: check whitelist/blacklist as before
+    if is_keydown && !is_win_key {
+      if config_manager.should_block(vk, shift, ctrl, alt, win) {
+        if should_block_in_current_context(config_manager) {
+          return LRESULT(1);
+        }
+      }
+    }
+  } else {
+    // Fallback to old behavior if config is not available
+    if is_win_key && is_keyup && !(shift || ctrl || alt) {
+      let win_used = WIN_USED_IN_COMBO.load(Ordering::Relaxed);
+      if !win_used {
         let state = unsafe { SHQueryUserNotificationState().unwrap_or(QUNS_BUSY) };
         if state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN {
-          return LRESULT(1);
+          inject_ctrl_tap();
         }
       }
     }
@@ -181,6 +205,50 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
       wparam,
       lparam,
     )
+  }
+}
+
+fn should_block_in_current_context(config_manager: &ConfigManager) -> bool {
+  match config_manager.detect_method() {
+    DetectMethod::NotificationState => {
+      let state = unsafe { SHQueryUserNotificationState().unwrap_or(QUNS_BUSY) };
+      state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN
+    },
+    DetectMethod::Fullscreen => is_foreground_fullscreen(),
+    DetectMethod::WindowStyle => is_foreground_game_windowstyle(),
+  }
+}
+
+fn inject_ctrl_tap() {
+  let inputs = [
+    INPUT {
+      r#type: INPUT_KEYBOARD,
+      Anonymous: INPUT_0 {
+        ki: KEYBDINPUT {
+          wVk: VK_CONTROL,
+          wScan: 0,
+          dwFlags: KEYBD_EVENT_FLAGS(0),
+          time: 0,
+          dwExtraInfo: 0,
+        },
+      },
+    },
+    INPUT {
+      r#type: INPUT_KEYBOARD,
+      Anonymous: INPUT_0 {
+        ki: KEYBDINPUT {
+          wVk: VK_CONTROL,
+          wScan: 0,
+          dwFlags: KEYEVENTF_KEYUP,
+          time: 0,
+          dwExtraInfo: 0,
+        },
+      },
+    },
+  ];
+
+  unsafe {
+    SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
   }
 }
 
