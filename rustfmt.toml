@@ -1,10 +1,9 @@
-# Version 1.1
+# Version 1.4
 
 condense_wildcard_suffixes = true
 force_multiline_blocks = true
 format_macro_matchers = true
 match_block_trailing_comma = true
-merge_imports = true
 normalize_comments = true
 reorder_impl_items = true
 struct_lit_single_line = false
@@ -13,3 +12,5 @@ unstable_features = true
 use_field_init_shorthand = true
 use_try_shorthand = true
 wrap_comments = false
+imports_granularity = "Item"
+group_imports = "StdExternalCrate"
