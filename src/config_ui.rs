@@ -1,6 +1,6 @@
 use crate::config::{DetectMethod, KeyCombo, KeyConfig};
 use iced::{
-  Alignment, Application, Command, Element, Length, Settings, Theme,
+  Alignment, Element, Length, Task, Theme,
   widget::{Space, button, column, container, pick_list, row, scrollable, text, text_input},
 };
 use std::process;
@@ -29,13 +29,8 @@ pub struct ConfigUI {
   show_help: bool,
 }
 
-impl Application for ConfigUI {
-  type Executor = iced::executor::Default;
-  type Flags = KeyConfig;
-  type Message = Message;
-  type Theme = Theme;
-
-  fn new(config: KeyConfig) -> (Self, Command<Message>) {
+impl ConfigUI {
+  pub fn new(config: KeyConfig) -> (Self, Task<Message>) {
     (
       ConfigUI {
         config,
@@ -44,15 +39,19 @@ impl Application for ConfigUI {
         error_message: None,
         show_help: false,
       },
-      Command::none(),
+      Task::none(),
     )
   }
 
-  fn title(&self) -> String {
+  pub fn title(&self) -> String {
     "WinKeyLock Configuration".to_string()
   }
 
-  fn update(&mut self, message: Message) -> Command<Message> {
+  pub fn theme(&self) -> Theme {
+    Theme::Light
+  }
+
+  pub fn update(&mut self, message: Message) -> Task<Message> {
     self.error_message = None; // Clear error on each update
 
     match message {
@@ -106,20 +105,20 @@ impl Application for ConfigUI {
       },
       Message::Save => {
         self.config.save();
-        return Command::perform(async {}, |_| Message::Close);
+        return Task::perform(async {}, |_| Message::Close);
       },
       Message::Cancel => {
-        return Command::perform(async {}, |_| Message::Close);
+        return Task::perform(async {}, |_| Message::Close);
       },
       Message::Close => {
         process::exit(0);
       },
     }
 
-    Command::none()
+    Task::none()
   }
 
-  fn view(&self) -> Element<'_, Message> {
+  pub fn view(&self) -> Element<'_, Message> {
     let description = text(
       "Configure which keys should be blocked or allowed. \
             Examples: 'lwin', 'ctrl+c', 'shift+alt+tab'",
@@ -137,7 +136,7 @@ impl Application for ConfigUI {
 
     let header = row![description, help_button]
       .spacing(10)
-      .align_items(Alignment::Center);
+      .align_y(Alignment::Center);
 
     let help_content: Element<Message> = if self.show_help {
       container(
@@ -145,7 +144,8 @@ impl Application for ConfigUI {
           text("How to enter key combinations").size(16),
           text("Use '+' between each modifier and key, e.g. 'ctrl+shift+esc'.").size(13),
           text("Supported modifiers: 'ctrl', 'alt', 'shift', 'lwin', 'rwin'.").size(13),
-          text("Finish with exactly one key name like 'c', 'f12', 'space', 'delete', etc.").size(13),
+          text("Finish with exactly one key name like 'c', 'f12', 'space', 'delete', etc.")
+            .size(13),
           text("Names are case-insensitive; spaces around '+' are optional.").size(13),
           text("Only one non-modifier key is allowed per combination.").size(13),
         ]
@@ -155,7 +155,7 @@ impl Application for ConfigUI {
       .padding(12)
       .into()
     } else {
-      Space::with_height(Length::Fixed(0.0)).into()
+      Space::new().into()
     };
 
     // Blacklist section
@@ -176,13 +176,13 @@ impl Application for ConfigUI {
               text(&key.string_repr).width(Length::Fill),
               button("Remove")
                 .on_press(Message::RemoveBlacklistKey(i))
-                .style(iced::theme::Button::Destructive)
+                .style(button::danger)
             ]
             .spacing(10)
-            .align_items(Alignment::Center)
+            .align_y(Alignment::Center)
             .into()
           })
-          .collect(),
+          .collect::<Vec<_>>(),
       )
       .spacing(5)
       .into()
@@ -198,10 +198,10 @@ impl Application for ConfigUI {
       .width(Length::Fill),
       button("Add")
         .on_press(Message::AddBlacklistKey)
-        .style(iced::theme::Button::Positive)
+        .style(button::success)
     ]
     .spacing(10)
-    .align_items(Alignment::Center);
+    .align_y(Alignment::Center);
 
     // Whitelist section
     let whitelist_title = text("Allowed Keys (Whitelist)").size(18);
@@ -222,13 +222,13 @@ impl Application for ConfigUI {
               text(&key.string_repr).width(Length::Fill),
               button("Remove")
                 .on_press(Message::RemoveWhitelistKey(i))
-                .style(iced::theme::Button::Destructive)
+                .style(button::danger)
             ]
             .spacing(10)
-            .align_items(Alignment::Center)
+            .align_y(Alignment::Center)
             .into()
           })
-          .collect(),
+          .collect::<Vec<_>>(),
       )
       .spacing(5)
       .into()
@@ -241,15 +241,14 @@ impl Application for ConfigUI {
         .width(Length::Fill),
       button("Add")
         .on_press(Message::AddWhitelistKey)
-        .style(iced::theme::Button::Positive)
+        .style(button::success)
     ]
     .spacing(10)
-    .align_items(Alignment::Center);
+    .align_y(Alignment::Center);
 
     // Detect method section
     let detect_method_title = text("Detection Method").size(18);
-    let detect_method_description =
-      text("How to detect if the focused window is a game").size(12);
+    let detect_method_description = text("How to detect if the focused window is a game").size(12);
 
     let detect_method_picker = pick_list(
       DetectMethod::ALL.as_slice(),
@@ -261,45 +260,43 @@ impl Application for ConfigUI {
     // Error message
     let error_section: Element<Message> = if let Some(ref error) = self.error_message {
       text(error)
-        .style(iced::theme::Text::Color(iced::Color::from_rgb(
-          0.8, 0.2, 0.2,
-        )))
+        .style(text::danger)
         .into()
     } else {
-      Space::with_height(Length::Fixed(0.0)).into()
+      Space::new().into()
     };
 
     // Action buttons
     let action_buttons = row![
       button("Save")
         .on_press(Message::Save)
-        .style(iced::theme::Button::Primary),
+        .style(button::primary),
       button("Cancel").on_press(Message::Cancel),
     ]
     .spacing(10)
-    .align_items(Alignment::Center);
+    .align_y(Alignment::Center);
 
     let content = column![
       header,
       help_content,
-      Space::with_height(Length::Fixed(20.0)),
+      Space::new().height(20.0),
       blacklist_title,
       blacklist_description,
-      Space::with_height(Length::Fixed(10.0)),
+      Space::new().height(10.0),
       blacklist_items,
       blacklist_input_row,
-      Space::with_height(Length::Fixed(20.0)),
+      Space::new().height(20.0),
       whitelist_title,
       whitelist_description,
-      Space::with_height(Length::Fixed(10.0)),
+      Space::new().height(10.0),
       whitelist_items,
       whitelist_input_row,
-      Space::with_height(Length::Fixed(20.0)),
+      Space::new().height(20.0),
       detect_method_title,
       detect_method_description,
-      Space::with_height(Length::Fixed(10.0)),
+      Space::new().height(10.0),
       detect_method_picker,
-      Space::with_height(Length::Fixed(20.0)),
+      Space::new().height(20.0),
       error_section,
       action_buttons,
     ]
@@ -313,27 +310,27 @@ impl Application for ConfigUI {
     container(scrollable_content)
       .width(Length::Fill)
       .height(Length::Fill)
-      .center_x()
+      .center_x(Length::Fill)
       .into()
-  }
-
-  fn theme(&self) -> Theme {
-    Theme::Light
   }
 }
 
-pub fn run_config_ui(config: KeyConfig) -> Result<(), iced::Error> {
-  ConfigUI::run(Settings {
-    window: iced::window::Settings {
-      size: (480, 600),           // Smaller width: 480px instead of default ~650px
-      min_size: Some((400, 500)), // Minimum size to prevent it from being too small
+pub fn run_config_ui(config: KeyConfig) -> iced::Result {
+  iced::application(
+    move || ConfigUI::new(config.clone()),
+    ConfigUI::update,
+    ConfigUI::view
+  )
+    .title(ConfigUI::title)
+    .window(iced::window::Settings {
+      size: (480.0, 600.0).into(),
+      min_size: Some((400.0, 500.0).into()),
       resizable: true,
       decorations: true,
       ..Default::default()
-    },
-    flags: config,
-    ..Default::default()
-  })
+    })
+    .theme(ConfigUI::theme)
+    .run()
 }
 
 /// Helper function to launch the config UI in a separate process

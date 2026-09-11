@@ -10,9 +10,9 @@ use std::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
   VK_0, VK_1, VK_2, VK_3, VK_4, VK_5, VK_6, VK_7, VK_8, VK_9, VK_A, VK_B, VK_BACK, VK_C,
-  VK_CAPITAL, VK_D, VK_DELETE, VK_DOWN, VK_E, VK_END, VK_ESCAPE, VK_F, VK_F1, VK_F10, VK_F11,
-  VK_F12, VK_F13, VK_F14, VK_F15, VK_F16, VK_F17, VK_F18, VK_F19, VK_F2, VK_F20, VK_F21, VK_F22,
-  VK_F23, VK_F24, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_G, VK_H, VK_HOME, VK_I,
+  VK_CAPITAL, VK_D, VK_DELETE, VK_DOWN, VK_E, VK_END, VK_ESCAPE, VK_F, VK_F1, VK_F2, VK_F3, VK_F4,
+  VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_F10, VK_F11, VK_F12, VK_F13, VK_F14, VK_F15, VK_F16,
+  VK_F17, VK_F18, VK_F19, VK_F20, VK_F21, VK_F22, VK_F23, VK_F24, VK_G, VK_H, VK_HOME, VK_I,
   VK_INSERT, VK_J, VK_K, VK_L, VK_LEFT, VK_LWIN, VK_M, VK_N, VK_NEXT, VK_NUMLOCK, VK_O, VK_OEM_1,
   VK_OEM_2, VK_OEM_3, VK_OEM_4, VK_OEM_5, VK_OEM_6, VK_OEM_7, VK_OEM_COMMA, VK_OEM_MINUS,
   VK_OEM_PERIOD, VK_OEM_PLUS, VK_P, VK_PAUSE, VK_PRIOR, VK_Q, VK_R, VK_RETURN, VK_RIGHT, VK_RWIN,
@@ -282,6 +282,9 @@ pub struct KeyConfig {
   /// Method used to detect if a window is a game
   #[serde(default)]
   pub detect_method: DetectMethod,
+  /// Whether the app should run as administrator
+  #[serde(default)]
+  pub run_as_admin: bool,
 }
 
 impl Default for KeyConfig {
@@ -294,6 +297,7 @@ impl Default for KeyConfig {
       blacklist: vec![parse("lwin")],
       whitelist: vec![],
       detect_method: DetectMethod::default(),
+      run_as_admin: false,
     }
   }
 }
