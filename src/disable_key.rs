@@ -14,8 +14,9 @@ use windows::{
       Shell::{QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState},
       WindowsAndMessaging::{
         CallNextHookEx, EnumChildWindows, GWL_STYLE, GetForegroundWindow, GetWindowLongPtrW,
-        GetWindowRect, HHOOK, KBDLLHOOKSTRUCT, SetWindowsHookExW, UnhookWindowsHookEx,
-        WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WS_CAPTION, WS_SYSMENU,
+        GetWindowRect, HHOOK, KBDLLHOOKSTRUCT, LLKHF_INJECTED, SetWindowsHookExW,
+        UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+        WS_CAPTION, WS_SYSMENU,
       },
     },
   },
@@ -27,7 +28,10 @@ use crate::config::{ConfigManager, DetectMethod};
 static SHIFT_DOWN: AtomicBool = AtomicBool::new(false);
 static CTRL_DOWN: AtomicBool = AtomicBool::new(false);
 static ALT_DOWN: AtomicBool = AtomicBool::new(false);
-static WIN_DOWN: AtomicBool = AtomicBool::new(false);
+static LWIN_DOWN: AtomicBool = AtomicBool::new(false);
+static RWIN_DOWN: AtomicBool = AtomicBool::new(false);
+static LWIN_BLOCKED: AtomicBool = AtomicBool::new(false);
+static RWIN_BLOCKED: AtomicBool = AtomicBool::new(false);
 
 // Track if another key was pressed while a modifier was held
 // If true, the modifier was used in a combo and shouldn't be blocked on keyup
@@ -124,6 +128,17 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
   }
 
   let ev = unsafe { *(lparam.0 as *const KBDLLHOOKSTRUCT) };
+  if ev.flags.contains(LLKHF_INJECTED) {
+    return unsafe {
+      CallNextHookEx(
+        Some(HHOOK(KEYBOARD_HOOK.get().unwrap().ptr)),
+        code,
+        wparam,
+        lparam,
+      )
+    };
+  }
+
   let vk = ev.vkCode as u16;
   let msg = wparam.0 as u32;
 
@@ -131,19 +146,42 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
   let is_keyup = msg == WM_KEYUP || msg == WM_SYSKEYUP;
 
   let is_win_key = matches!(VIRTUAL_KEY(vk), VK_LWIN | VK_RWIN);
+  let is_modifier_key = matches!(
+    VIRTUAL_KEY(vk),
+    VK_LWIN
+      | VK_RWIN
+      | VK_LSHIFT
+      | VK_RSHIFT
+      | VK_SHIFT
+      | VK_LCONTROL
+      | VK_RCONTROL
+      | VK_CONTROL
+      | VK_LMENU
+      | VK_RMENU
+      | VK_MENU
+  );
 
   // Update modifier key states
   match VIRTUAL_KEY(vk) {
     VK_LSHIFT | VK_RSHIFT | VK_SHIFT => SHIFT_DOWN.store(is_keydown, Ordering::Relaxed),
     VK_LCONTROL | VK_RCONTROL | VK_CONTROL => CTRL_DOWN.store(is_keydown, Ordering::Relaxed),
     VK_LMENU | VK_RMENU | VK_MENU => ALT_DOWN.store(is_keydown, Ordering::Relaxed),
-    VK_LWIN | VK_RWIN => {
+    VK_LWIN => {
       if is_keydown {
-        WIN_DOWN.store(true, Ordering::Relaxed);
-        // Reset combo tracking when win key is pressed
-        WIN_USED_IN_COMBO.store(false, Ordering::Relaxed);
+        if !LWIN_DOWN.swap(true, Ordering::Relaxed) {
+          WIN_USED_IN_COMBO.store(false, Ordering::Relaxed);
+        }
       } else {
-        WIN_DOWN.store(false, Ordering::Relaxed);
+        LWIN_DOWN.store(false, Ordering::Relaxed);
+      }
+    },
+    VK_RWIN => {
+      if is_keydown {
+        if !RWIN_DOWN.swap(true, Ordering::Relaxed) {
+          WIN_USED_IN_COMBO.store(false, Ordering::Relaxed);
+        }
+      } else {
+        RWIN_DOWN.store(false, Ordering::Relaxed);
       }
     },
     _ => {},
@@ -152,48 +190,77 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
   let shift = SHIFT_DOWN.load(Ordering::Relaxed);
   let ctrl = CTRL_DOWN.load(Ordering::Relaxed);
   let alt = ALT_DOWN.load(Ordering::Relaxed);
-  let win = WIN_DOWN.load(Ordering::Relaxed);
-
-  // If a non-modifier key is pressed while win is held, mark win as used in combo
-  if is_keydown && !is_win_key && win {
-    WIN_USED_IN_COMBO.store(true, Ordering::Relaxed);
-  }
+  let lwin = LWIN_DOWN.load(Ordering::Relaxed);
+  let rwin = RWIN_DOWN.load(Ordering::Relaxed);
+  let win = lwin || rwin;
 
   if let Some(config_manager) = CONFIG_MANAGER.get() {
-    // For win key: check on keyup whether to cancel Start menu
-    // This allows win+X combos to work while blocking win alone
-    if is_win_key && is_keyup {
-      let win_used = WIN_USED_IN_COMBO.load(Ordering::Relaxed);
-
-      // If win was NOT used in a combo and should be blocked, inject Ctrl to cancel Start menu
-      if !win_used
-        && config_manager.should_block(vk, shift, ctrl, alt, false)
-        && should_block_in_current_context(config_manager)
-      {
-        // Inject a Ctrl key press+release to cancel the Start menu trigger
-        // This is a common technique - pressing any other key while Win is held cancels Start menu
-        inject_ctrl_tap();
-      }
-      // Always let the keyup through so the key doesn't get stuck
-    }
-
-    // For non-modifier keys on keydown: check whitelist/blacklist as before
-    if is_keydown && !is_win_key {
-      if config_manager.should_block(vk, shift, ctrl, alt, win) {
-        if should_block_in_current_context(config_manager) {
+    if is_modifier_key {
+      if is_keydown {
+        // Block the modifier keydown directly if it's blacklisted and no whitelisted combo uses it
+        if config_manager.should_block(None, shift, ctrl, alt, lwin, rwin)
+          && !config_manager.has_potential_whitelist_match(shift, ctrl, alt, lwin, rwin)
+          && should_block_in_current_context(config_manager)
+        {
+          if VIRTUAL_KEY(vk) == VK_LWIN {
+            LWIN_BLOCKED.store(true, Ordering::Relaxed);
+          } else if VIRTUAL_KEY(vk) == VK_RWIN {
+            RWIN_BLOCKED.store(true, Ordering::Relaxed);
+          }
           return LRESULT(1);
         }
-      }
-    }
-  } else {
-    // Fallback to old behavior if config is not available
-    if is_win_key && is_keyup && !(shift || ctrl || alt) {
-      let win_used = WIN_USED_IN_COMBO.load(Ordering::Relaxed);
-      if !win_used {
-        let state = unsafe { SHQueryUserNotificationState().unwrap_or(QUNS_BUSY) };
-        if state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN {
+      } else if is_keyup && is_win_key {
+        let is_lwin = VIRTUAL_KEY(vk) == VK_LWIN;
+        let was_blocked = if is_lwin {
+          LWIN_BLOCKED.swap(false, Ordering::Relaxed)
+        } else {
+          RWIN_BLOCKED.swap(false, Ordering::Relaxed)
+        };
+
+        if was_blocked {
+          return LRESULT(1);
+        }
+
+        // If win was allowed down for a potential whitelisted combo that never happened,
+        // inject Ctrl to cancel the Windows Start menu on keyup.
+        if !WIN_USED_IN_COMBO.load(Ordering::Relaxed)
+          && config_manager.should_block(None, shift, ctrl, alt, is_lwin, !is_lwin)
+          && should_block_in_current_context(config_manager)
+        {
           inject_ctrl_tap();
         }
+      }
+    } else if is_keydown {
+      if config_manager.should_block(Some(vk), shift, ctrl, alt, lwin, rwin)
+        && should_block_in_current_context(config_manager)
+      {
+        return LRESULT(1);
+      }
+
+      if win {
+        WIN_USED_IN_COMBO.store(true, Ordering::Relaxed);
+      }
+    }
+  } else if is_win_key {
+    // Fallback to default behavior if config is not available
+    if is_keydown {
+      let state = unsafe { SHQueryUserNotificationState().unwrap_or(QUNS_BUSY) };
+      if state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN {
+        if VIRTUAL_KEY(vk) == VK_LWIN {
+          LWIN_BLOCKED.store(true, Ordering::Relaxed);
+        } else {
+          RWIN_BLOCKED.store(true, Ordering::Relaxed);
+        }
+        return LRESULT(1);
+      }
+    } else if is_keyup {
+      let was_blocked = if VIRTUAL_KEY(vk) == VK_LWIN {
+        LWIN_BLOCKED.swap(false, Ordering::Relaxed)
+      } else {
+        RWIN_BLOCKED.swap(false, Ordering::Relaxed)
+      };
+      if was_blocked {
+        return LRESULT(1);
       }
     }
   }

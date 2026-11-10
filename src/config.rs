@@ -13,19 +13,20 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
   VK_CAPITAL, VK_D, VK_DELETE, VK_DOWN, VK_E, VK_END, VK_ESCAPE, VK_F, VK_F1, VK_F2, VK_F3, VK_F4,
   VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_F10, VK_F11, VK_F12, VK_F13, VK_F14, VK_F15, VK_F16,
   VK_F17, VK_F18, VK_F19, VK_F20, VK_F21, VK_F22, VK_F23, VK_F24, VK_G, VK_H, VK_HOME, VK_I,
-  VK_INSERT, VK_J, VK_K, VK_L, VK_LEFT, VK_LWIN, VK_M, VK_N, VK_NEXT, VK_NUMLOCK, VK_O, VK_OEM_1,
+  VK_INSERT, VK_J, VK_K, VK_L, VK_LEFT, VK_M, VK_N, VK_NEXT, VK_NUMLOCK, VK_O, VK_OEM_1,
   VK_OEM_2, VK_OEM_3, VK_OEM_4, VK_OEM_5, VK_OEM_6, VK_OEM_7, VK_OEM_COMMA, VK_OEM_MINUS,
-  VK_OEM_PERIOD, VK_OEM_PLUS, VK_P, VK_PAUSE, VK_PRIOR, VK_Q, VK_R, VK_RETURN, VK_RIGHT, VK_RWIN,
+  VK_OEM_PERIOD, VK_OEM_PLUS, VK_P, VK_PAUSE, VK_PRIOR, VK_Q, VK_R, VK_RETURN, VK_RIGHT,
   VK_S, VK_SCROLL, VK_SNAPSHOT, VK_SPACE, VK_T, VK_TAB, VK_U, VK_UP, VK_V, VK_W, VK_X, VK_Y, VK_Z,
 };
 
 #[derive(Debug, Clone)]
 pub struct KeyCombo {
-  pub key: u16,
+  pub key: Option<u16>,
   pub shift: bool,
   pub ctrl: bool,
   pub alt: bool,
-  pub win: bool,
+  pub lwin: bool,
+  pub rwin: bool,
   pub string_repr: String,
 }
 
@@ -138,18 +139,17 @@ fn create_key_map() -> HashMap<String, u16> {
   map.insert("rightbracket".to_string(), VK_OEM_6.0);
   map.insert("quote".to_string(), VK_OEM_7.0);
 
-  // Windows keys
-  map.insert("super".to_string(), VK_LWIN.0);
-  map.insert("lwin".to_string(), VK_LWIN.0);
-  map.insert("rwin".to_string(), VK_RWIN.0);
-
   map
 }
 
 impl KeyCombo {
   pub fn from_string(s: &str) -> Result<Self, String> {
     let key_map = create_key_map();
-    let parts: Vec<String> = s.split('+').map(|p| p.trim().to_lowercase()).collect();
+    let parts: Vec<String> = s
+      .split('+')
+      .map(|p| p.trim().to_lowercase())
+      .filter(|p| !p.is_empty())
+      .collect();
 
     if parts.is_empty() {
       return Err("Empty key combination".to_string());
@@ -158,34 +158,17 @@ impl KeyCombo {
     let mut shift = false;
     let mut ctrl = false;
     let mut alt = false;
-    let mut win = false;
+    let mut lwin = false;
+    let mut rwin = false;
     let mut key_name = None;
 
     for part in &parts {
       match part.as_str() {
-        "shift" => shift = true,
-        "ctrl" | "control" => ctrl = true,
-        "alt" => alt = true,
-        "lwin" | "super" => {
-          // If "lwin" is the only part, treat it as the key itself (not as a modifier)
-          if parts.len() == 1 {
-            key_name = Some("lwin");
-            // Don't set win=true; lwin IS the key, not a modifier
-          } else {
-            // lwin is being used as a modifier for another key
-            win = true;
-          }
-        },
-        "rwin" => {
-          // If "rwin" is the only part, treat it as the key itself (not as a modifier)
-          if parts.len() == 1 {
-            key_name = Some("rwin");
-            // Don't set win=true; rwin IS the key, not a modifier
-          } else {
-            // rwin is being used as a modifier for another key
-            win = true;
-          }
-        },
+        "shift" | "lshift" | "rshift" => shift = true,
+        "ctrl" | "control" | "lctrl" | "rctrl" => ctrl = true,
+        "alt" | "lalt" | "ralt" => alt = true,
+        "lwin" | "super" => lwin = true,
+        "rwin" => rwin = true,
         _ => {
           if key_name.is_some() {
             return Err(format!(
@@ -199,27 +182,59 @@ impl KeyCombo {
       }
     }
 
-    let key_name = key_name.ok_or("No key specified".to_string())?;
-    let key_code = key_map
-      .get(key_name)
-      .ok_or_else(|| format!("Unknown key: {}", key_name))?;
+    let key = match key_name {
+      Some(name) => Some(
+        *key_map
+          .get(name)
+          .ok_or_else(|| format!("Unknown key: {}", name))?,
+      ),
+      None => {
+        if !(shift || ctrl || alt || lwin || rwin) {
+          return Err("No key specified".to_string());
+        }
+        None
+      },
+    };
 
     Ok(Self {
-      key: *key_code,
+      key,
       shift,
       ctrl,
       alt,
-      win,
+      lwin,
+      rwin,
       string_repr: s.to_string(),
     })
   }
 
-  pub fn matches(&self, key: u16, shift: bool, ctrl: bool, alt: bool, win: bool) -> bool {
-    self.key == key
-      && self.shift == shift
-      && self.ctrl == ctrl
-      && self.alt == alt
-      && self.win == win
+  pub fn matches(
+    &self,
+    key: Option<u16>,
+    shift: bool,
+    ctrl: bool,
+    alt: bool,
+    lwin: bool,
+    rwin: bool,
+  ) -> bool {
+    match self.key {
+      // Exact key + exact modifiers (e.g. "lwin+shift+s", "alt+f4", "capslock")
+      Some(k) => {
+        key == Some(k)
+          && self.shift == shift
+          && self.ctrl == ctrl
+          && self.alt == alt
+          && self.lwin == lwin
+          && self.rwin == rwin
+      },
+      // Modifier-only rule (e.g. "lwin", "ctrl", "alt"): matches whenever those modifiers are active
+      None => {
+        (!self.shift || shift)
+          && (!self.ctrl || ctrl)
+          && (!self.alt || alt)
+          && (!self.lwin || lwin)
+          && (!self.rwin || rwin)
+      },
+    }
   }
 }
 
@@ -303,23 +318,45 @@ impl Default for KeyConfig {
 }
 
 impl KeyConfig {
-  pub fn should_block(&self, key: u16, shift: bool, ctrl: bool, alt: bool, win: bool) -> bool {
-    // First check whitelist - if explicitly allowed, don't block
-    for combo in &self.whitelist {
-      if combo.matches(key, shift, ctrl, alt, win) {
-        return false;
-      }
+  pub fn should_block(
+    &self,
+    key: Option<u16>,
+    shift: bool,
+    ctrl: bool,
+    alt: bool,
+    lwin: bool,
+    rwin: bool,
+  ) -> bool {
+    if self
+      .whitelist
+      .iter()
+      .any(|c| c.matches(key, shift, ctrl, alt, lwin, rwin))
+    {
+      return false;
     }
 
-    // Then check blacklist - if explicitly blocked, block it
-    for combo in &self.blacklist {
-      if combo.matches(key, shift, ctrl, alt, win) {
-        return true;
-      }
-    }
+    self
+      .blacklist
+      .iter()
+      .any(|c| c.matches(key, shift, ctrl, alt, lwin, rwin))
+  }
 
-    // Default: don't block
-    false
+  /// Returns true if any whitelisted combination uses all of the currently held modifiers
+  pub fn has_potential_whitelist_match(
+    &self,
+    shift: bool,
+    ctrl: bool,
+    alt: bool,
+    lwin: bool,
+    rwin: bool,
+  ) -> bool {
+    self.whitelist.iter().any(|c| {
+      (!shift || c.shift)
+        && (!ctrl || c.ctrl)
+        && (!alt || c.alt)
+        && (!lwin || c.lwin)
+        && (!rwin || c.rwin)
+    })
   }
 
   pub fn load() -> Self {
@@ -450,12 +487,36 @@ impl ConfigManager {
     })
   }
 
-  pub fn should_block(&self, key: u16, shift: bool, ctrl: bool, alt: bool, win: bool) -> bool {
+  pub fn should_block(
+    &self,
+    key: Option<u16>,
+    shift: bool,
+    ctrl: bool,
+    alt: bool,
+    lwin: bool,
+    rwin: bool,
+  ) -> bool {
     if let Ok(config) = self.config.read() {
-      config.should_block(key, shift, ctrl, alt, win)
+      config.should_block(key, shift, ctrl, alt, lwin, rwin)
     } else {
       eprintln!("Failed to acquire read lock for config");
       false // Default to not blocking if we can't read config
+    }
+  }
+
+  pub fn has_potential_whitelist_match(
+    &self,
+    shift: bool,
+    ctrl: bool,
+    alt: bool,
+    lwin: bool,
+    rwin: bool,
+  ) -> bool {
+    if let Ok(config) = self.config.read() {
+      config.has_potential_whitelist_match(shift, ctrl, alt, lwin, rwin)
+    } else {
+      eprintln!("Failed to acquire read lock for config");
+      false
     }
   }
 
@@ -470,5 +531,72 @@ impl ConfigManager {
 
   pub fn get_config_path(&self) -> PathBuf {
     KeyConfig::config_path()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_lwin_blacklisted_no_whitelist_blocks_all_lwin_activations() {
+    let config = KeyConfig {
+      blacklist: vec![KeyCombo::from_string("lwin").unwrap()],
+      whitelist: vec![],
+      detect_method: DetectMethod::default(),
+      run_as_admin: false,
+    };
+
+    assert!(!config.has_potential_whitelist_match(false, false, false, true, false));
+    // Standalone lwin
+    assert!(config.should_block(None, false, false, false, true, false));
+    // lwin with other modifiers held
+    assert!(config.should_block(None, true, false, false, true, false));
+    // lwin+s combo
+    assert!(config.should_block(Some(VK_S.0), false, false, false, true, false));
+    // lwin+shift+s combo
+    assert!(config.should_block(Some(VK_S.0), true, false, false, true, false));
+    // Plain 's' without lwin is not blocked
+    assert!(!config.should_block(Some(VK_S.0), false, false, false, false, false));
+    // rwin is not blocked when only lwin is blacklisted
+    assert!(!config.should_block(None, false, false, false, false, true));
+    assert!(!config.should_block(Some(VK_S.0), false, false, false, false, true));
+  }
+
+  #[test]
+  fn test_lwin_blacklisted_with_whitelist_allows_only_whitelisted_combo() {
+    let config = KeyConfig {
+      blacklist: vec![KeyCombo::from_string("lwin").unwrap()],
+      whitelist: vec![KeyCombo::from_string("lwin+shift+s").unwrap()],
+      detect_method: DetectMethod::default(),
+      run_as_admin: false,
+    };
+
+    assert!(config.has_potential_whitelist_match(false, false, false, true, false));
+    assert!(config.has_potential_whitelist_match(true, false, false, true, false));
+    // Whitelisted combo is allowed
+    assert!(!config.should_block(Some(VK_S.0), true, false, false, true, false));
+    // Non-whitelisted lwin+s is still blocked
+    assert!(config.should_block(Some(VK_S.0), false, false, false, true, false));
+    // Standalone lwin is still blocked
+    assert!(config.should_block(None, false, false, false, true, false));
+  }
+
+  #[test]
+  fn test_ctrl_blacklisted_and_whitelisted() {
+    let config = KeyConfig {
+      blacklist: vec![KeyCombo::from_string("ctrl").unwrap()],
+      whitelist: vec![KeyCombo::from_string("ctrl+c").unwrap()],
+      detect_method: DetectMethod::default(),
+      run_as_admin: false,
+    };
+
+    assert!(config.has_potential_whitelist_match(false, true, false, false, false));
+    // Standalone ctrl is blocked
+    assert!(config.should_block(None, false, true, false, false, false));
+    // ctrl+s is blocked
+    assert!(config.should_block(Some(VK_S.0), false, true, false, false, false));
+    // ctrl+c is allowed
+    assert!(!config.should_block(Some(VK_C.0), false, true, false, false, false));
   }
 }
