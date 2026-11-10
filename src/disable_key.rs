@@ -30,11 +30,8 @@ static CTRL_DOWN: AtomicBool = AtomicBool::new(false);
 static ALT_DOWN: AtomicBool = AtomicBool::new(false);
 static LWIN_DOWN: AtomicBool = AtomicBool::new(false);
 static RWIN_DOWN: AtomicBool = AtomicBool::new(false);
-static LWIN_BLOCKED: AtomicBool = AtomicBool::new(false);
-static RWIN_BLOCKED: AtomicBool = AtomicBool::new(false);
 
-// Track if another key was pressed while a modifier was held
-// If true, the modifier was used in a combo and shouldn't be blocked on keyup
+// Track if an allowed non-modifier key was pressed while Win was held
 static WIN_USED_IN_COMBO: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug)]
@@ -161,74 +158,57 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
       | VK_MENU
   );
 
-  // Update modifier key states
-  match VIRTUAL_KEY(vk) {
-    VK_LSHIFT | VK_RSHIFT | VK_SHIFT => SHIFT_DOWN.store(is_keydown, Ordering::Relaxed),
-    VK_LCONTROL | VK_RCONTROL | VK_CONTROL => CTRL_DOWN.store(is_keydown, Ordering::Relaxed),
-    VK_LMENU | VK_RMENU | VK_MENU => ALT_DOWN.store(is_keydown, Ordering::Relaxed),
-    VK_LWIN => {
-      if is_keydown {
+  // On keydown, set modifier state before reading; on keyup, clear it after reading
+  // so the modifier being released is still reflected in the state for this event.
+  if is_keydown {
+    match VIRTUAL_KEY(vk) {
+      VK_LSHIFT | VK_RSHIFT | VK_SHIFT => SHIFT_DOWN.store(true, Ordering::Relaxed),
+      VK_LCONTROL | VK_RCONTROL | VK_CONTROL => CTRL_DOWN.store(true, Ordering::Relaxed),
+      VK_LMENU | VK_RMENU | VK_MENU => ALT_DOWN.store(true, Ordering::Relaxed),
+      VK_LWIN => {
         if !LWIN_DOWN.swap(true, Ordering::Relaxed) {
           WIN_USED_IN_COMBO.store(false, Ordering::Relaxed);
         }
-      } else {
-        LWIN_DOWN.store(false, Ordering::Relaxed);
-      }
-    },
-    VK_RWIN => {
-      if is_keydown {
+      },
+      VK_RWIN => {
         if !RWIN_DOWN.swap(true, Ordering::Relaxed) {
           WIN_USED_IN_COMBO.store(false, Ordering::Relaxed);
         }
-      } else {
-        RWIN_DOWN.store(false, Ordering::Relaxed);
-      }
-    },
-    _ => {},
-  };
+      },
+      _ => {},
+    }
+  }
 
   let shift = SHIFT_DOWN.load(Ordering::Relaxed);
   let ctrl = CTRL_DOWN.load(Ordering::Relaxed);
   let alt = ALT_DOWN.load(Ordering::Relaxed);
   let lwin = LWIN_DOWN.load(Ordering::Relaxed);
   let rwin = RWIN_DOWN.load(Ordering::Relaxed);
-  let win = lwin || rwin;
+
+  if is_keyup {
+    match VIRTUAL_KEY(vk) {
+      VK_LSHIFT | VK_RSHIFT | VK_SHIFT => SHIFT_DOWN.store(false, Ordering::Relaxed),
+      VK_LCONTROL | VK_RCONTROL | VK_CONTROL => CTRL_DOWN.store(false, Ordering::Relaxed),
+      VK_LMENU | VK_RMENU | VK_MENU => ALT_DOWN.store(false, Ordering::Relaxed),
+      VK_LWIN => LWIN_DOWN.store(false, Ordering::Relaxed),
+      VK_RWIN => RWIN_DOWN.store(false, Ordering::Relaxed),
+      _ => {},
+    }
+  }
 
   if let Some(config_manager) = CONFIG_MANAGER.get() {
     if is_modifier_key {
-      if is_keydown {
-        // Block the modifier keydown directly if it's blacklisted and no whitelisted combo uses it
-        if config_manager.should_block(None, shift, ctrl, alt, lwin, rwin)
-          && !config_manager.has_potential_whitelist_match(shift, ctrl, alt, lwin, rwin)
-          && should_block_in_current_context(config_manager)
-        {
-          if VIRTUAL_KEY(vk) == VK_LWIN {
-            LWIN_BLOCKED.store(true, Ordering::Relaxed);
-          } else if VIRTUAL_KEY(vk) == VK_RWIN {
-            RWIN_BLOCKED.store(true, Ordering::Relaxed);
-          }
+      let blocked = config_manager.should_block(None, shift, ctrl, alt, lwin, rwin)
+        && should_block_in_current_context(config_manager);
+
+      if !config_manager.has_potential_whitelist_match(shift, ctrl, alt, lwin, rwin) {
+        if blocked {
           return LRESULT(1);
         }
-      } else if is_keyup && is_win_key {
-        let is_lwin = VIRTUAL_KEY(vk) == VK_LWIN;
-        let was_blocked = if is_lwin {
-          LWIN_BLOCKED.swap(false, Ordering::Relaxed)
-        } else {
-          RWIN_BLOCKED.swap(false, Ordering::Relaxed)
-        };
-
-        if was_blocked {
-          return LRESULT(1);
-        }
-
-        // If win was allowed down for a potential whitelisted combo that never happened,
+      } else if is_keyup && is_win_key && blocked && !WIN_USED_IN_COMBO.load(Ordering::Relaxed) {
+        // Win was allowed down for a potential whitelisted combo that never happened;
         // inject Ctrl to cancel the Windows Start menu on keyup.
-        if !WIN_USED_IN_COMBO.load(Ordering::Relaxed)
-          && config_manager.should_block(None, shift, ctrl, alt, is_lwin, !is_lwin)
-          && should_block_in_current_context(config_manager)
-        {
-          inject_ctrl_tap();
-        }
+        inject_ctrl_tap();
       }
     } else if is_keydown {
       if config_manager.should_block(Some(vk), shift, ctrl, alt, lwin, rwin)
@@ -237,31 +217,14 @@ extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> L
         return LRESULT(1);
       }
 
-      if win {
+      if lwin || rwin {
         WIN_USED_IN_COMBO.store(true, Ordering::Relaxed);
       }
     }
   } else if is_win_key {
-    // Fallback to default behavior if config is not available
-    if is_keydown {
-      let state = unsafe { SHQueryUserNotificationState().unwrap_or(QUNS_BUSY) };
-      if state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN {
-        if VIRTUAL_KEY(vk) == VK_LWIN {
-          LWIN_BLOCKED.store(true, Ordering::Relaxed);
-        } else {
-          RWIN_BLOCKED.store(true, Ordering::Relaxed);
-        }
-        return LRESULT(1);
-      }
-    } else if is_keyup {
-      let was_blocked = if VIRTUAL_KEY(vk) == VK_LWIN {
-        LWIN_BLOCKED.swap(false, Ordering::Relaxed)
-      } else {
-        RWIN_BLOCKED.swap(false, Ordering::Relaxed)
-      };
-      if was_blocked {
-        return LRESULT(1);
-      }
+    let state = unsafe { SHQueryUserNotificationState().unwrap_or(QUNS_BUSY) };
+    if state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN {
+      return LRESULT(1);
     }
   }
 

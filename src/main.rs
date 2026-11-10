@@ -3,26 +3,34 @@
   windows_subsystem = "windows"
 )]
 
-use std::{env, error::Error, process::Command};
+use std::env;
+use std::error::Error;
+use std::process::Command;
 
 use elevated_command::Command as ECommand;
-use tao::{
-  self,
-  event::Event,
-  event_loop::{ControlFlow, EventLoopBuilder},
-};
-use tray_icon::{
-  MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent,
-  menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem},
-};
-use windows::Win32::{
-  Foundation::{ERROR_ALREADY_EXISTS, GetLastError},
-  System::Threading::CreateMutexW,
-  UI::WindowsAndMessaging::{MB_ICONERROR, MessageBoxW},
-};
-use windows_strings::w;
-
+use tao::event::Event;
+use tao::event_loop::ControlFlow;
+use tao::event_loop::EventLoopBuilder;
+use tao::{self};
+use tracing::error;
+use tracing::info;
+use tracing_subscriber::EnvFilter;
+use tray_icon::MouseButton;
+use tray_icon::MouseButtonState;
+use tray_icon::TrayIconBuilder;
+use tray_icon::TrayIconEvent;
+use tray_icon::menu::CheckMenuItem;
+use tray_icon::menu::Menu;
+use tray_icon::menu::MenuEvent;
+use tray_icon::menu::MenuItem;
+use tray_icon::menu::PredefinedMenuItem;
 use wide_string::ToWide;
+use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
+use windows::Win32::Foundation::GetLastError;
+use windows::Win32::System::Threading::CreateMutexW;
+use windows::Win32::UI::WindowsAndMessaging::MB_ICONERROR;
+use windows::Win32::UI::WindowsAndMessaging::MessageBoxW;
+use windows_strings::w;
 
 mod autostart;
 mod config;
@@ -64,13 +72,10 @@ fn already_running() -> Result<Option<windows::Win32::Foundation::HANDLE>, Box<d
       windows::Win32::Foundation::CloseHandle(handle).ok();
       return Ok(None);
     }
-    
+
     Ok(Some(handle))
   }
 }
-
-use tracing::{info, error, warn, debug};
-use tracing_subscriber::EnvFilter;
 
 fn init_logging() -> Result<tracing_appender::non_blocking::WorkerGuard, Box<dyn Error>> {
   let mut log_dir = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
@@ -96,7 +101,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     Err(e) => {
       eprintln!("Failed to init logging: {}", e);
       None
-    }
+    },
   };
 
   info!("Winkeylock starting up...");
@@ -114,7 +119,7 @@ fn main() -> Result<(), Box<dyn Error>> {
   let mutex_handle = match already_running() {
     Ok(None) => {
       info!("Another instance is already running. Exiting.");
-      return Ok(())
+      return Ok(());
     },
     Ok(Some(handle)) => handle,
     Err(e) => unsafe {
@@ -136,20 +141,20 @@ fn main() -> Result<(), Box<dyn Error>> {
   // If run_as_admin is enabled but we aren't elevated, elevate and exit this instance.
   if config.run_as_admin && !is_elevated {
     info!("Auto-elevating process due to config...");
-    
+
     // Explicitly release the mutex so the newly elevated instance can start
     unsafe {
       windows::Win32::Foundation::CloseHandle(mutex_handle).ok();
     }
-    
+
     match elevate() {
       Ok(_) => {
         info!("Successfully handed off to elevated process, exiting.");
-        return Ok(())
+        return Ok(());
       },
       Err(e) => {
         error!("Failed to auto-elevate: {}", e);
-      }
+      },
     }
   }
 
@@ -161,7 +166,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     match autostart::add_task(APP_NAME) {
       Ok(_) => info!("Successfully created task scheduler entry during migration."),
-      Err(e) => error!("Failed to create task scheduler entry during migration: {:?}", e),
+      Err(e) => {
+        error!(
+          "Failed to create task scheduler entry during migration: {:?}",
+          e
+        )
+      },
     }
   }
 
@@ -273,7 +283,10 @@ fn main() -> Result<(), Box<dyn Error>> {
           current_config.run_as_admin = !current_config.run_as_admin;
           current_config.save();
           elevate_i.set_checked(current_config.run_as_admin);
-          info!("Menu: toggled run_as_admin to {}", current_config.run_as_admin);
+          info!(
+            "Menu: toggled run_as_admin to {}",
+            current_config.run_as_admin
+          );
 
           // If autostart is already checked, migrate it seamlessly to the new setting
           if autostart::check(APP_NAME) {
@@ -294,12 +307,12 @@ fn main() -> Result<(), Box<dyn Error>> {
           // If they turned it on and we aren't elevated, elevate now
           if current_config.run_as_admin && !ECommand::is_elevated() {
             info!("Menu: run_as_admin turned on, initiating elevation...");
-            
+
             // Explicitly release the mutex so the newly elevated instance can start
             unsafe {
               windows::Win32::Foundation::CloseHandle(mutex_handle).ok();
             }
-            
+
             match elevate() {
               Ok(_) => {
                 info!("Menu: handed off to elevated process, exiting");

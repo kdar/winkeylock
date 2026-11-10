@@ -3,9 +3,7 @@ name = "winkeylock"
 version = "0.2.6"
 edition = "2024"
 authors = ["Kevin Darlington <kevin@outroot.com>"]
-readme = "README.md"
 repository = "https://github.com/kdar/winkeylock"
-homepage = "https://github.com/kdar/winkeylock"
 description = """
 Automatically enable/disable the windows key when you're in a game or any app that is too busy for notifications.
 """
