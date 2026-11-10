@@ -14,6 +14,7 @@ exclude = ["/dev/*"]
 [dependencies]
 dirs = "7.0.0"
 elevated-command = "1.1.3"
+gpui = { version = "0.2.2", default-features = false }
 iced = { version = "0.14", default-features = false, features = [
   "wgpu",
   "thread-pool",
@@ -53,7 +54,7 @@ LegalCopyright = "Copyright 2022 Kevin Darlington. MIT licensed."
 FileDescription = "Winkey Lock"
 ProductName = "Winkey Lock"
 
-[profile.release-fast]
-inherits = "release"
-lto = true
-codegen-units = 1
+# [profile.release-fast]
+# inherits = "release"
+# lto = true
+# codegen-units = 1

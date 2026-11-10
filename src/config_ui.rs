@@ -1,352 +1,325 @@
-use crate::config::{DetectMethod, KeyCombo, KeyConfig};
-use iced::{
-  Alignment, Element, Length, Task, Theme,
-  widget::{Space, button, column, container, pick_list, row, scrollable, text, text_input},
+pub mod gpui_ui;
+pub mod iced_ui;
+
+use std::sync::{
+  Mutex,
+  atomic::{AtomicBool, Ordering},
 };
-use std::process;
 
-#[derive(Debug, Clone)]
-pub enum Message {
-  AddBlacklistKey,
-  AddWhitelistKey,
-  RemoveBlacklistKey(usize),
-  RemoveWhitelistKey(usize),
-  BlacklistKeyInput(String),
-  WhitelistKeyInput(String),
-  DetectMethodChanged(DetectMethod),
-  ToggleHelp,
-  Save,
-  Cancel,
-  Close,
+use once_cell::sync::Lazy;
+use windows::Win32::{
+  Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, LPARAM, LRESULT, WPARAM},
+  System::Threading::CreateMutexW,
+  UI::{
+    Input::KeyboardAndMouse::{
+      VIRTUAL_KEY, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_RCONTROL,
+      VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT,
+    },
+    WindowsAndMessaging::{
+      BringWindowToTop, CallNextHookEx, FindWindowW, GetForegroundWindow, GetWindowThreadProcessId,
+      HHOOK, IsIconic, KBDLLHOOKSTRUCT, LLKHF_INJECTED, SW_RESTORE, SetForegroundWindow,
+      SetWindowsHookExW, ShowWindow, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP,
+      WM_SYSKEYDOWN, WM_SYSKEYUP,
+    },
+  },
+};
+
+use crate::{config::format_key_combo, wide_string::ToWide};
+
+pub const CONFIG_WINDOW_TITLE_GPUI: &str = "WinKeyLock Configuration (GPUI)";
+pub const CONFIG_WINDOW_TITLE_ICED: &str = "WinKeyLock Configuration";
+
+const CONFIG_UI_MUTEX_NAME: &str = "winkeylock_config_ui";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiBackend {
+  Gpui,
+  Iced,
 }
 
-#[derive(Debug)]
-pub struct ConfigUI {
-  config: KeyConfig,
-  blacklist_input: String,
-  whitelist_input: String,
-  error_message: Option<String>,
-  show_help: bool,
+impl UiBackend {
+  pub fn as_str(&self) -> &'static str {
+    match self {
+      UiBackend::Gpui => "gpui",
+      UiBackend::Iced => "iced",
+    }
+  }
+
+  pub fn from_arg(arg: &str) -> Option<Self> {
+    match arg.trim().to_ascii_lowercase().as_str() {
+      "gpui" => Some(UiBackend::Gpui),
+      "iced" => Some(UiBackend::Iced),
+      _ => None,
+    }
+  }
 }
 
-impl ConfigUI {
-  pub fn new(config: KeyConfig) -> (Self, Task<Message>) {
-    (
-      ConfigUI {
-        config,
-        blacklist_input: String::new(),
-        whitelist_input: String::new(),
-        error_message: None,
-        show_help: false,
+/// Switch this constant between `UiBackend::Gpui` and `UiBackend::Iced`
+/// to change the default configuration UI backend.
+/// You can also pass `--config-ui=gpui` or `--config-ui=iced` on the command line.
+pub const DEFAULT_BACKEND: UiBackend = UiBackend::Gpui;
+
+/// Find an existing configuration window and bring it to the foreground if present.
+pub fn focus_existing_config_window() -> bool {
+  for title in [CONFIG_WINDOW_TITLE_GPUI, CONFIG_WINDOW_TITLE_ICED] {
+    let wide_title = title.to_wide();
+    unsafe {
+      if let Ok(hwnd) = FindWindowW(None, wide_title.as_pwstr())
+        && !hwnd.is_invalid()
+        && !hwnd.0.is_null()
+      {
+        if IsIconic(hwnd).as_bool() {
+          let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetForegroundWindow(hwnd);
+        return true;
+      }
+    }
+  }
+  false
+}
+
+fn acquire_config_ui_mutex() -> Result<Option<HANDLE>, Box<dyn std::error::Error>> {
+  let mutex_name = CONFIG_UI_MUTEX_NAME.to_wide();
+  unsafe {
+    let handle = CreateMutexW(None, false.into(), mutex_name.as_pwstr())?;
+    if handle.is_invalid() {
+      return Err("failed to create config UI mutex".into());
+    }
+    if GetLastError() == ERROR_ALREADY_EXISTS {
+      CloseHandle(handle).ok();
+      return Ok(None);
+    }
+    Ok(Some(handle))
+  }
+}
+
+// --- Low-level keyboard hook for capturing key combinations in the Config UI ---
+
+static REC_SHIFT: AtomicBool = AtomicBool::new(false);
+static REC_CTRL: AtomicBool = AtomicBool::new(false);
+static REC_ALT: AtomicBool = AtomicBool::new(false);
+static REC_LWIN: AtomicBool = AtomicBool::new(false);
+static REC_RWIN: AtomicBool = AtomicBool::new(false);
+static NON_MOD_PRESSED_IN_CHORD: AtomicBool = AtomicBool::new(false);
+static INTERCEPTING_CHORD: AtomicBool = AtomicBool::new(false);
+static RECORDING_MODE: AtomicBool = AtomicBool::new(false);
+
+static RECORDED_COMBO: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+
+pub fn set_recording_mode(active: bool) {
+  reset_recorder_state();
+  if let Ok(mut slot) = RECORDED_COMBO.lock() {
+    *slot = None;
+  }
+  RECORDING_MODE.store(active, Ordering::Relaxed);
+}
+
+pub fn is_recording_mode() -> bool {
+  RECORDING_MODE.load(Ordering::Relaxed)
+}
+
+pub fn take_recorded_combo() -> Option<String> {
+  RECORDED_COMBO.lock().ok().and_then(|mut g| g.take())
+}
+
+fn is_config_window_focused() -> bool {
+  unsafe {
+    let hwnd = GetForegroundWindow();
+    if hwnd.is_invalid() || hwnd.0.is_null() {
+      return false;
+    }
+    let mut pid: u32 = 0;
+    GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    pid == std::process::id()
+  }
+}
+
+fn reset_recorder_state() {
+  REC_SHIFT.store(false, Ordering::Relaxed);
+  REC_CTRL.store(false, Ordering::Relaxed);
+  REC_ALT.store(false, Ordering::Relaxed);
+  REC_LWIN.store(false, Ordering::Relaxed);
+  REC_RWIN.store(false, Ordering::Relaxed);
+  NON_MOD_PRESSED_IN_CHORD.store(false, Ordering::Relaxed);
+  INTERCEPTING_CHORD.store(false, Ordering::Relaxed);
+}
+
+extern "system" fn config_keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+  if code < 0 {
+    return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+  }
+
+  let ev = unsafe { *(lparam.0 as *const KBDLLHOOKSTRUCT) };
+  if ev.flags.contains(LLKHF_INJECTED) {
+    return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+  }
+
+  if !is_config_window_focused() {
+    reset_recorder_state();
+    return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+  }
+
+  let vk = ev.vkCode as u16;
+  let msg = wparam.0 as u32;
+  let is_keydown = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+  let is_keyup = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+
+  let is_modifier = matches!(
+    VIRTUAL_KEY(vk),
+    VK_LWIN
+      | VK_RWIN
+      | VK_LSHIFT
+      | VK_RSHIFT
+      | VK_SHIFT
+      | VK_LCONTROL
+      | VK_RCONTROL
+      | VK_CONTROL
+      | VK_LMENU
+      | VK_RMENU
+      | VK_MENU
+  );
+
+  let mut modifier_newly_pressed = false;
+  if is_keydown {
+    match VIRTUAL_KEY(vk) {
+      VK_LSHIFT | VK_RSHIFT | VK_SHIFT => {
+        modifier_newly_pressed = !REC_SHIFT.swap(true, Ordering::Relaxed);
       },
-      Task::none(),
-    )
+      VK_LCONTROL | VK_RCONTROL | VK_CONTROL => {
+        modifier_newly_pressed = !REC_CTRL.swap(true, Ordering::Relaxed);
+      },
+      VK_LMENU | VK_RMENU | VK_MENU => {
+        modifier_newly_pressed = !REC_ALT.swap(true, Ordering::Relaxed);
+      },
+      VK_LWIN => {
+        modifier_newly_pressed = !REC_LWIN.swap(true, Ordering::Relaxed);
+      },
+      VK_RWIN => {
+        modifier_newly_pressed = !REC_RWIN.swap(true, Ordering::Relaxed);
+      },
+      _ => {},
+    }
   }
 
-  pub fn title(&self) -> String {
-    "WinKeyLock Configuration".to_string()
+  let shift = REC_SHIFT.load(Ordering::Relaxed);
+  let ctrl = REC_CTRL.load(Ordering::Relaxed);
+  let alt = REC_ALT.load(Ordering::Relaxed);
+  let lwin = REC_LWIN.load(Ordering::Relaxed);
+  let rwin = REC_RWIN.load(Ordering::Relaxed);
+
+  if is_keyup {
+    match VIRTUAL_KEY(vk) {
+      VK_LSHIFT | VK_RSHIFT | VK_SHIFT => REC_SHIFT.store(false, Ordering::Relaxed),
+      VK_LCONTROL | VK_RCONTROL | VK_CONTROL => REC_CTRL.store(false, Ordering::Relaxed),
+      VK_LMENU | VK_RMENU | VK_MENU => REC_ALT.store(false, Ordering::Relaxed),
+      VK_LWIN => REC_LWIN.store(false, Ordering::Relaxed),
+      VK_RWIN => REC_RWIN.store(false, Ordering::Relaxed),
+      _ => {},
+    }
   }
 
-  pub fn theme(&self) -> Theme {
-    Theme::Light
-  }
+  let any_mod_after = REC_SHIFT.load(Ordering::Relaxed)
+    || REC_CTRL.load(Ordering::Relaxed)
+    || REC_ALT.load(Ordering::Relaxed)
+    || REC_LWIN.load(Ordering::Relaxed)
+    || REC_RWIN.load(Ordering::Relaxed);
 
-  pub fn update(&mut self, message: Message) -> Task<Message> {
-    self.error_message = None; // Clear error on each update
+  let recording_mode = RECORDING_MODE.load(Ordering::Relaxed);
+  // Only intercept and record keys when explicit Record mode is active (or finishing an active recorded chord).
+  let should_intercept = recording_mode || INTERCEPTING_CHORD.load(Ordering::Relaxed);
 
-    match message {
-      Message::AddBlacklistKey => {
-        if !self.blacklist_input.trim().is_empty() {
-          match KeyCombo::from_string(&self.blacklist_input.trim()) {
-            Ok(key_combo) => {
-              self.config.blacklist.push(key_combo);
-              self.blacklist_input.clear();
-            },
-            Err(e) => {
-              self.error_message = Some(format!("Invalid key combination: {}", e));
-            },
+  if should_intercept {
+    if is_keydown {
+      INTERCEPTING_CHORD.store(true, Ordering::Relaxed);
+      if is_modifier {
+        if modifier_newly_pressed && !NON_MOD_PRESSED_IN_CHORD.load(Ordering::Relaxed) {
+          if let Some(combo_str) = format_key_combo(None, shift, ctrl, alt, lwin, rwin)
+            && let Ok(mut slot) = RECORDED_COMBO.lock()
+          {
+            *slot = Some(combo_str);
           }
         }
-      },
-      Message::AddWhitelistKey => {
-        if !self.whitelist_input.trim().is_empty() {
-          match KeyCombo::from_string(&self.whitelist_input.trim()) {
-            Ok(key_combo) => {
-              self.config.whitelist.push(key_combo);
-              self.whitelist_input.clear();
-            },
-            Err(e) => {
-              self.error_message = Some(format!("Invalid key combination: {}", e));
-            },
-          }
+      } else if let Some(combo_str) = format_key_combo(Some(vk), shift, ctrl, alt, lwin, rwin) {
+        NON_MOD_PRESSED_IN_CHORD.store(true, Ordering::Relaxed);
+        if let Ok(mut slot) = RECORDED_COMBO.lock() {
+          *slot = Some(combo_str);
         }
-      },
-      Message::RemoveBlacklistKey(index) => {
-        if index < self.config.blacklist.len() {
-          self.config.blacklist.remove(index);
+        if !any_mod_after {
+          RECORDING_MODE.store(false, Ordering::Relaxed);
+          INTERCEPTING_CHORD.store(false, Ordering::Relaxed);
+          NON_MOD_PRESSED_IN_CHORD.store(false, Ordering::Relaxed);
         }
-      },
-      Message::RemoveWhitelistKey(index) => {
-        if index < self.config.whitelist.len() {
-          self.config.whitelist.remove(index);
-        }
-      },
-      Message::BlacklistKeyInput(input) => {
-        self.blacklist_input = input;
-      },
-      Message::WhitelistKeyInput(input) => {
-        self.whitelist_input = input;
-      },
-      Message::DetectMethodChanged(method) => {
-        self.config.detect_method = method;
-      },
-      Message::ToggleHelp => {
-        self.show_help = !self.show_help;
-      },
-      Message::Save => {
-        self.config.save();
-        return Task::perform(async {}, |_| Message::Close);
-      },
-      Message::Cancel => {
-        return Task::perform(async {}, |_| Message::Close);
-      },
-      Message::Close => {
-        process::exit(0);
-      },
+      }
+    } else if is_keyup && !any_mod_after {
+      RECORDING_MODE.store(false, Ordering::Relaxed);
+      INTERCEPTING_CHORD.store(false, Ordering::Relaxed);
+      NON_MOD_PRESSED_IN_CHORD.store(false, Ordering::Relaxed);
     }
 
-    Task::none()
+    return LRESULT(1);
   }
 
-  pub fn view(&self) -> Element<'_, Message> {
-    let description = text(
-      "Configure which keys should be blocked or allowed. \
-            Examples: 'lwin', 'ctrl+c', 'shift+alt+tab'",
-    )
-    .size(14)
-    .width(Length::Fill);
+  unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
 
-    let help_button_label = if self.show_help {
-      "Hide Help"
-    } else {
-      "Show Help"
-    };
+struct HookGuard(HHOOK);
 
-    let help_button = button(help_button_label).on_press(Message::ToggleHelp);
-
-    let header = row![description, help_button]
-      .spacing(10)
-      .align_y(Alignment::Center);
-
-    let help_content: Element<Message> = if self.show_help {
-      container(
-        column![
-          text("How to enter key combinations").size(16),
-          text("Use '+' between each modifier and key, e.g. 'ctrl+shift+esc'.").size(13),
-          text("Supported modifiers: 'ctrl', 'alt', 'shift', 'lwin', 'rwin'.").size(13),
-          text("Finish with exactly one key name like 'c', 'f12', 'space', 'delete', etc.")
-            .size(13),
-          text("Names are case-insensitive; spaces around '+' are optional.").size(13),
-          text("Only one non-modifier key is allowed per combination.").size(13),
-        ]
-        .spacing(6),
-      )
-      .width(Length::Fill)
-      .padding(12)
-      .into()
-    } else {
-      Space::new().into()
-    };
-
-    // Blacklist section
-    let blacklist_title = text("Blocked Keys (Blacklist)").size(18);
-    let blacklist_description = text("Keys that will be blocked when active").size(12);
-
-    let blacklist_items: Element<Message> = if self.config.blacklist.is_empty() {
-      text("No blocked keys configured").into()
-    } else {
-      column(
-        self
-          .config
-          .blacklist
-          .iter()
-          .enumerate()
-          .map(|(i, key)| {
-            row![
-              text(&key.string_repr).width(Length::Fill),
-              button("Remove")
-                .on_press(Message::RemoveBlacklistKey(i))
-                .style(button::danger)
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center)
-            .into()
-          })
-          .collect::<Vec<_>>(),
-      )
-      .spacing(5)
-      .into()
-    };
-
-    let blacklist_input_row = row![
-      text_input(
-        "Enter key combination (e.g., 'lwin', 'ctrl+alt+del')",
-        &self.blacklist_input
-      )
-      .on_input(Message::BlacklistKeyInput)
-      .on_submit(Message::AddBlacklistKey)
-      .width(Length::Fill),
-      button("Add")
-        .on_press(Message::AddBlacklistKey)
-        .style(button::success)
-    ]
-    .spacing(10)
-    .align_y(Alignment::Center);
-
-    // Whitelist section
-    let whitelist_title = text("Allowed Keys (Whitelist)").size(18);
-    let whitelist_description =
-      text("Keys that will be allowed even if they match blacklist rules").size(12);
-
-    let whitelist_items: Element<Message> = if self.config.whitelist.is_empty() {
-      text("No allowed keys configured").into()
-    } else {
-      column(
-        self
-          .config
-          .whitelist
-          .iter()
-          .enumerate()
-          .map(|(i, key)| {
-            row![
-              text(&key.string_repr).width(Length::Fill),
-              button("Remove")
-                .on_press(Message::RemoveWhitelistKey(i))
-                .style(button::danger)
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center)
-            .into()
-          })
-          .collect::<Vec<_>>(),
-      )
-      .spacing(5)
-      .into()
-    };
-
-    let whitelist_input_row = row![
-      text_input("Enter key combination", &self.whitelist_input)
-        .on_input(Message::WhitelistKeyInput)
-        .on_submit(Message::AddWhitelistKey)
-        .width(Length::Fill),
-      button("Add")
-        .on_press(Message::AddWhitelistKey)
-        .style(button::success)
-    ]
-    .spacing(10)
-    .align_y(Alignment::Center);
-
-    // Detect method section
-    let detect_method_title = text("Detection Method").size(18);
-    let detect_method_description = text("How to detect if the focused window is a game").size(12);
-
-    let detect_method_picker = pick_list(
-      DetectMethod::ALL.as_slice(),
-      Some(self.config.detect_method),
-      Message::DetectMethodChanged,
-    )
-    .width(Length::Fill);
-
-    // Error message
-    let error_section: Element<Message> = if let Some(ref error) = self.error_message {
-      text(error)
-        .style(text::danger)
-        .into()
-    } else {
-      Space::new().into()
-    };
-
-    // Action buttons
-    let action_buttons = row![
-      button("Save")
-        .on_press(Message::Save)
-        .style(button::primary),
-      button("Cancel").on_press(Message::Cancel),
-    ]
-    .spacing(10)
-    .align_y(Alignment::Center);
-
-    let content = column![
-      header,
-      help_content,
-      Space::new().height(20.0),
-      blacklist_title,
-      blacklist_description,
-      Space::new().height(10.0),
-      blacklist_items,
-      blacklist_input_row,
-      Space::new().height(20.0),
-      whitelist_title,
-      whitelist_description,
-      Space::new().height(10.0),
-      whitelist_items,
-      whitelist_input_row,
-      Space::new().height(20.0),
-      detect_method_title,
-      detect_method_description,
-      Space::new().height(10.0),
-      detect_method_picker,
-      Space::new().height(20.0),
-      error_section,
-      action_buttons,
-    ]
-    .spacing(10)
-    .padding(20)
-    .max_width(440);
-
-    // Wrap the entire content in a scrollable container for when the window is too small
-    let scrollable_content = scrollable(content).width(Length::Fill).height(Length::Fill);
-
-    container(scrollable_content)
-      .width(Length::Fill)
-      .height(Length::Fill)
-      .center_x(Length::Fill)
-      .into()
+impl Drop for HookGuard {
+  fn drop(&mut self) {
+    unsafe {
+      let _ = UnhookWindowsHookEx(self.0);
+    }
   }
 }
 
-pub fn run_config_ui(config: KeyConfig) -> iced::Result {
-  iced::application(
-    move || ConfigUI::new(config.clone()),
-    ConfigUI::update,
-    ConfigUI::view
-  )
-    .title(ConfigUI::title)
-    .window(iced::window::Settings {
-      size: (480.0, 600.0).into(),
-      min_size: Some((400.0, 500.0).into()),
-      resizable: true,
-      decorations: true,
-      ..Default::default()
-    })
-    .theme(ConfigUI::theme)
-    .run()
+pub fn run_config_ui_with_backend(
+  config: crate::config::KeyConfig,
+  backend: UiBackend,
+) -> Result<(), Box<dyn std::error::Error>> {
+  let _hook_guard = unsafe {
+    SetWindowsHookExW(WH_KEYBOARD_LL, Some(config_keyboard_hook), None, 0)
+      .ok()
+      .map(HookGuard)
+  };
+
+  match backend {
+    UiBackend::Gpui => gpui_ui::run(config),
+    UiBackend::Iced => iced_ui::run(config),
+  }
 }
 
 /// Helper function to launch the config UI in a separate process
 pub fn launch_config_ui() -> Result<(), Box<dyn std::error::Error>> {
-  // Launch the config UI in a separate process to avoid event loop conflicts
+  launch_config_ui_with_backend(DEFAULT_BACKEND)
+}
+
+pub fn launch_config_ui_with_backend(backend: UiBackend) -> Result<(), Box<dyn std::error::Error>> {
+  // If the config window is already open, bring it to the foreground instead of spawning another
+  if focus_existing_config_window() {
+    return Ok(());
+  }
+
   let exe_path = std::env::current_exe()?;
 
   std::process::Command::new(&exe_path)
-    .arg("--config-ui")
+    .arg(format!("--config-ui={}", backend.as_str()))
     .spawn()?;
 
   Ok(())
 }
 
-/// Function to actually run the config UI (called when launched with --config-ui)
-pub fn run_config_ui_main() -> Result<(), iced::Error> {
+/// Function to actually run the config UI (called when launched with `--config-ui` or `--config-ui=<backend>`)
+pub fn run_config_ui_main(backend: Option<UiBackend>) -> Result<(), Box<dyn std::error::Error>> {
+  let _mutex_handle = match acquire_config_ui_mutex()? {
+    Some(handle) => handle,
+    None => {
+      focus_existing_config_window();
+      return Ok(());
+    },
+  };
+
   let config = crate::config::KeyConfig::load();
-  run_config_ui(config)
+  run_config_ui_with_backend(config, backend.unwrap_or(DEFAULT_BACKEND))
 }

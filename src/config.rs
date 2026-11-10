@@ -142,6 +142,138 @@ fn create_key_map() -> HashMap<String, u16> {
   map
 }
 
+pub fn vk_to_key_name(vk: u16) -> Option<&'static str> {
+  match windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(vk) {
+    VK_A => Some("a"),
+    VK_B => Some("b"),
+    VK_C => Some("c"),
+    VK_D => Some("d"),
+    VK_E => Some("e"),
+    VK_F => Some("f"),
+    VK_G => Some("g"),
+    VK_H => Some("h"),
+    VK_I => Some("i"),
+    VK_J => Some("j"),
+    VK_K => Some("k"),
+    VK_L => Some("l"),
+    VK_M => Some("m"),
+    VK_N => Some("n"),
+    VK_O => Some("o"),
+    VK_P => Some("p"),
+    VK_Q => Some("q"),
+    VK_R => Some("r"),
+    VK_S => Some("s"),
+    VK_T => Some("t"),
+    VK_U => Some("u"),
+    VK_V => Some("v"),
+    VK_W => Some("w"),
+    VK_X => Some("x"),
+    VK_Y => Some("y"),
+    VK_Z => Some("z"),
+    VK_0 => Some("0"),
+    VK_1 => Some("1"),
+    VK_2 => Some("2"),
+    VK_3 => Some("3"),
+    VK_4 => Some("4"),
+    VK_5 => Some("5"),
+    VK_6 => Some("6"),
+    VK_7 => Some("7"),
+    VK_8 => Some("8"),
+    VK_9 => Some("9"),
+    VK_F1 => Some("f1"),
+    VK_F2 => Some("f2"),
+    VK_F3 => Some("f3"),
+    VK_F4 => Some("f4"),
+    VK_F5 => Some("f5"),
+    VK_F6 => Some("f6"),
+    VK_F7 => Some("f7"),
+    VK_F8 => Some("f8"),
+    VK_F9 => Some("f9"),
+    VK_F10 => Some("f10"),
+    VK_F11 => Some("f11"),
+    VK_F12 => Some("f12"),
+    VK_F13 => Some("f13"),
+    VK_F14 => Some("f14"),
+    VK_F15 => Some("f15"),
+    VK_F16 => Some("f16"),
+    VK_F17 => Some("f17"),
+    VK_F18 => Some("f18"),
+    VK_F19 => Some("f19"),
+    VK_F20 => Some("f20"),
+    VK_F21 => Some("f21"),
+    VK_F22 => Some("f22"),
+    VK_F23 => Some("f23"),
+    VK_F24 => Some("f24"),
+    VK_SPACE => Some("space"),
+    VK_RETURN => Some("enter"),
+    VK_TAB => Some("tab"),
+    VK_ESCAPE => Some("esc"),
+    VK_BACK => Some("backspace"),
+    VK_DELETE => Some("delete"),
+    VK_INSERT => Some("insert"),
+    VK_HOME => Some("home"),
+    VK_END => Some("end"),
+    VK_PRIOR => Some("pageup"),
+    VK_NEXT => Some("pagedown"),
+    VK_UP => Some("up"),
+    VK_DOWN => Some("down"),
+    VK_LEFT => Some("left"),
+    VK_RIGHT => Some("right"),
+    VK_SNAPSHOT => Some("printscreen"),
+    VK_PAUSE => Some("pause"),
+    VK_CAPITAL => Some("capslock"),
+    VK_NUMLOCK => Some("numlock"),
+    VK_SCROLL => Some("scrolllock"),
+    VK_OEM_1 => Some("semicolon"),
+    VK_OEM_PLUS => Some("equals"),
+    VK_OEM_COMMA => Some("comma"),
+    VK_OEM_MINUS => Some("minus"),
+    VK_OEM_PERIOD => Some("period"),
+    VK_OEM_2 => Some("slash"),
+    VK_OEM_3 => Some("grave"),
+    VK_OEM_4 => Some("leftbracket"),
+    VK_OEM_5 => Some("backslash"),
+    VK_OEM_6 => Some("rightbracket"),
+    VK_OEM_7 => Some("quote"),
+    _ => None,
+  }
+}
+
+pub fn format_key_combo(
+  key: Option<u16>,
+  shift: bool,
+  ctrl: bool,
+  alt: bool,
+  lwin: bool,
+  rwin: bool,
+) -> Option<String> {
+  let mut parts: Vec<&'static str> = Vec::new();
+  if lwin {
+    parts.push("lwin");
+  }
+  if rwin {
+    parts.push("rwin");
+  }
+  if ctrl {
+    parts.push("ctrl");
+  }
+  if alt {
+    parts.push("alt");
+  }
+  if shift {
+    parts.push("shift");
+  }
+  if let Some(vk) = key {
+    let key_name = vk_to_key_name(vk)?;
+    parts.push(key_name);
+  }
+  if parts.is_empty() {
+    None
+  } else {
+    Some(parts.join("+"))
+  }
+}
+
 impl KeyCombo {
   pub fn from_string(s: &str) -> Result<Self, String> {
     let key_map = create_key_map();

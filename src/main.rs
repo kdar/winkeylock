@@ -106,10 +106,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
   info!("Winkeylock starting up...");
 
-  // Check if we should run the config UI
+  // Check if we should run the config UI (--config-ui, --config-ui=gpui, or --config-ui=iced)
   let args: Vec<String> = env::args().collect();
-  if args.iter().any(|arg| arg == "--config-ui") {
-    if let Err(e) = config_ui::run_config_ui_main() {
+  if let Some(config_arg) = args
+    .iter()
+    .find(|arg| *arg == "--config-ui" || arg.starts_with("--config-ui="))
+  {
+    let backend = config_arg
+      .strip_prefix("--config-ui=")
+      .and_then(config_ui::UiBackend::from_arg);
+    if let Err(e) = config_ui::run_config_ui_main(backend) {
       eprintln!("Failed to run config UI: {}", e);
       std::process::exit(1);
     }
