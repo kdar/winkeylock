@@ -1,23 +1,112 @@
-use notify::{Event, EventKind, RecursiveMode, Watcher};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::{
-  collections::HashMap,
-  fmt, fs,
-  path::PathBuf,
-  sync::{Arc, RwLock, mpsc},
-  thread,
-  time::Duration,
-};
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-  VK_0, VK_1, VK_2, VK_3, VK_4, VK_5, VK_6, VK_7, VK_8, VK_9, VK_A, VK_B, VK_BACK, VK_C,
-  VK_CAPITAL, VK_D, VK_DELETE, VK_DOWN, VK_E, VK_END, VK_ESCAPE, VK_F, VK_F1, VK_F2, VK_F3, VK_F4,
-  VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_F10, VK_F11, VK_F12, VK_F13, VK_F14, VK_F15, VK_F16,
-  VK_F17, VK_F18, VK_F19, VK_F20, VK_F21, VK_F22, VK_F23, VK_F24, VK_G, VK_H, VK_HOME, VK_I,
-  VK_INSERT, VK_J, VK_K, VK_L, VK_LEFT, VK_M, VK_N, VK_NEXT, VK_NUMLOCK, VK_O, VK_OEM_1,
-  VK_OEM_2, VK_OEM_3, VK_OEM_4, VK_OEM_5, VK_OEM_6, VK_OEM_7, VK_OEM_COMMA, VK_OEM_MINUS,
-  VK_OEM_PERIOD, VK_OEM_PLUS, VK_P, VK_PAUSE, VK_PRIOR, VK_Q, VK_R, VK_RETURN, VK_RIGHT,
-  VK_S, VK_SCROLL, VK_SNAPSHOT, VK_SPACE, VK_T, VK_TAB, VK_U, VK_UP, VK_V, VK_W, VK_X, VK_Y, VK_Z,
-};
+use std::collections::HashMap;
+use std::fmt;
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::RwLock;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
+
+use notify::Event;
+use notify::EventKind;
+use notify::RecursiveMode;
+use notify::Watcher;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use serde::Serializer;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_0;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_1;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_2;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_3;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_4;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_5;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_6;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_7;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_8;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_9;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_A;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_B;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_BACK;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_C;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_CAPITAL;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_D;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_DOWN;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_E;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_END;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F1;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F2;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F3;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F4;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F5;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F6;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F7;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F8;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F9;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F10;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F11;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F12;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F13;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F14;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F15;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F16;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F17;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F18;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F19;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F20;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F21;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F22;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F23;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F24;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_G;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_H;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_HOME;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_I;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_INSERT;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_J;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_K;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_L;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_LEFT;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_M;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_N;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_NEXT;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_NUMLOCK;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_O;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_OEM_1;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_OEM_2;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_OEM_3;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_OEM_4;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_OEM_5;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_OEM_6;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_OEM_7;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_OEM_COMMA;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_OEM_MINUS;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_OEM_PERIOD;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_OEM_PLUS;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_P;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_PAUSE;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_PRIOR;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_Q;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_R;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_RETURN;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_RIGHT;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_S;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_SCROLL;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_SNAPSHOT;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_SPACE;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_T;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_TAB;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_U;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_UP;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_V;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_W;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_X;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_Y;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_Z;
 
 #[derive(Debug, Clone)]
 pub struct KeyCombo {
@@ -315,11 +404,13 @@ impl KeyCombo {
     }
 
     let key = match key_name {
-      Some(name) => Some(
-        *key_map
-          .get(name)
-          .ok_or_else(|| format!("Unknown key: {}", name))?,
-      ),
+      Some(name) => {
+        Some(
+          *key_map
+            .get(name)
+            .ok_or_else(|| format!("Unknown key: {}", name))?,
+        )
+      },
       None => {
         if !(shift || ctrl || alt || lwin || rwin) {
           return Err("No key specified".to_string());

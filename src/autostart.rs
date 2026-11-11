@@ -1,20 +1,28 @@
-use elevated_command::Command as ECommand;
 use std::env;
-use std::process::Command;
 use std::os::windows::process::CommandExt;
-use tracing::{debug, error, info};
-use windows::{
-  Win32::{
-    Foundation::{ERROR_MORE_DATA, ERROR_SUCCESS, E_FAIL},
-    System::Registry::{
-      HKEY, HKEY_CURRENT_USER, KEY_CREATE_SUB_KEY, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ,
-      RRF_RT_REG_SZ, RegCloseKey, RegCreateKeyExW, RegGetValueW, RegSetValueExW,
-    },
-  },
-  core::Error as WinError,
-};
+use std::process::Command;
 
-use windows::Win32::System::Registry::{RegDeleteValueW, RegOpenKeyExW};
+use elevated_command::Command as ECommand;
+use tracing::debug;
+use tracing::error;
+use tracing::info;
+use windows::Win32::Foundation::E_FAIL;
+use windows::Win32::Foundation::ERROR_MORE_DATA;
+use windows::Win32::Foundation::ERROR_SUCCESS;
+use windows::Win32::System::Registry::HKEY;
+use windows::Win32::System::Registry::HKEY_CURRENT_USER;
+use windows::Win32::System::Registry::KEY_CREATE_SUB_KEY;
+use windows::Win32::System::Registry::KEY_SET_VALUE;
+use windows::Win32::System::Registry::REG_OPTION_NON_VOLATILE;
+use windows::Win32::System::Registry::REG_SZ;
+use windows::Win32::System::Registry::RRF_RT_REG_SZ;
+use windows::Win32::System::Registry::RegCloseKey;
+use windows::Win32::System::Registry::RegCreateKeyExW;
+use windows::Win32::System::Registry::RegDeleteValueW;
+use windows::Win32::System::Registry::RegGetValueW;
+use windows::Win32::System::Registry::RegOpenKeyExW;
+use windows::Win32::System::Registry::RegSetValueExW;
+use windows::core::Error as WinError;
 
 use crate::wide_string::ToWide;
 
@@ -114,7 +122,10 @@ pub fn add_task(app_name: &str) -> Result<(), WinError> {
   let success = if ECommand::is_elevated() {
     cmd.output().map(|o| o.status.success()).unwrap_or(false)
   } else {
-    ECommand::new(cmd).output().map(|o| o.status.success()).unwrap_or(false)
+    ECommand::new(cmd)
+      .output()
+      .map(|o| o.status.success())
+      .unwrap_or(false)
   };
 
   if success {
@@ -128,7 +139,7 @@ pub fn check_task(app_name: &str) -> bool {
   let mut cmd = Command::new("schtasks");
   cmd.args(["/query", "/tn", app_name]);
   cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-  
+
   if let Ok(output) = cmd.output() {
     output.status.success()
   } else {
@@ -144,7 +155,10 @@ pub fn remove_task(app_name: &str) -> Result<(), WinError> {
   let success = if ECommand::is_elevated() {
     cmd.output().map(|o| o.status.success()).unwrap_or(false)
   } else {
-    ECommand::new(cmd).output().map(|o| o.status.success()).unwrap_or(false)
+    ECommand::new(cmd)
+      .output()
+      .map(|o| o.status.success())
+      .unwrap_or(false)
   };
 
   if success {
@@ -172,7 +186,10 @@ pub fn add(app_name: &str, run_as_admin: bool) -> Result<(), WinError> {
 pub fn check(app_name: &str) -> bool {
   let reg = check_registry(app_name);
   let task = check_task(app_name);
-  debug!("autostart::check results - registry: {}, task: {}", reg, task);
+  debug!(
+    "autostart::check results - registry: {}, task: {}",
+    reg, task
+  );
   reg || task
 }
 

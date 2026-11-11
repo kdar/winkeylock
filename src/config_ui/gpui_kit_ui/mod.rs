@@ -8,28 +8,49 @@ pub mod theme;
 
 use std::time::Duration;
 
-use gpui_kit::{
-  App, AppContext, Bounds, Context, ElementId, Entity, FontWeight, IntoElement, MouseUpEvent,
-  ParentElement, Render, SharedString, Styled, TitlebarOptions, Window, WindowBounds,
-  WindowOptions, base::ScrollbarMode, component::Theme, div, prelude::FluentBuilder, px, rgb,
-  size,
-  component::{
-    h_flex,
-    input::{Input, InputEvent, InputState},
-    scroll::ScrollableElement,
-    v_flex,
-  },
-};
-
-use crate::{
-  config::{DetectMethod, KeyCombo, KeyConfig},
-  config_ui::{
-    CONFIG_WINDOW_TITLE_GPUI, is_recording_mode, set_recording_mode, take_recorded_combo,
-  },
-};
-
-use components::{DetectMethodCard, HelpCard, KeyRow, PillButton};
+use components::DetectMethodCard;
+use components::HelpCard;
+use components::KeyRow;
+use components::PillButton;
+use gpui_kit::App;
+use gpui_kit::AppContext;
+use gpui_kit::Bounds;
+use gpui_kit::Context;
+use gpui_kit::ElementId;
+use gpui_kit::Entity;
+use gpui_kit::FontWeight;
+use gpui_kit::IntoElement;
+use gpui_kit::MouseUpEvent;
+use gpui_kit::ParentElement;
+use gpui_kit::Render;
+use gpui_kit::SharedString;
+use gpui_kit::Styled;
+use gpui_kit::TitlebarOptions;
+use gpui_kit::Window;
+use gpui_kit::WindowBounds;
+use gpui_kit::WindowOptions;
+use gpui_kit::base::ScrollbarMode;
+use gpui_kit::component::Theme;
+use gpui_kit::component::h_flex;
+use gpui_kit::component::input::Input;
+use gpui_kit::component::input::InputEvent;
+use gpui_kit::component::input::InputState;
+use gpui_kit::component::scroll::ScrollableElement;
+use gpui_kit::component::v_flex;
+use gpui_kit::div;
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::px;
+use gpui_kit::rgb;
+use gpui_kit::size;
 use theme::Palette;
+
+use crate::config::DetectMethod;
+use crate::config::KeyCombo;
+use crate::config::KeyConfig;
+use crate::config_ui::CONFIG_WINDOW_TITLE;
+use crate::config_ui::is_recording_mode;
+use crate::config_ui::set_recording_mode;
+use crate::config_ui::take_recorded_combo;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ListKind {
@@ -49,7 +70,8 @@ pub struct GpuiKitConfigUI {
 impl GpuiKitConfigUI {
   fn new(config: KeyConfig, window: &mut Window, cx: &mut Context<Self>) -> Self {
     let blacklist_input = cx.new(|cx| {
-      InputState::new(window, cx).placeholder("Type a combo (e.g. 'lwin', 'lwin+s') or click Record")
+      InputState::new(window, cx)
+        .placeholder("Type a combo (e.g. 'lwin', 'lwin+s') or click Record")
     });
     let whitelist_input = cx.new(|cx| {
       InputState::new(window, cx).placeholder("Type a combo (e.g. 'lwin+shift+s') or click Record")
@@ -59,11 +81,18 @@ impl GpuiKitConfigUI {
       (&blacklist_input, ListKind::Blacklist),
       (&whitelist_input, ListKind::Whitelist),
     ] {
-      cx.subscribe_in(input, window, move |this, _, event: &InputEvent, window, cx| {
-        if let InputEvent::PressEnter { .. } = event {
-          this.add_combo(kind, window, cx);
-        }
-      })
+      cx.subscribe_in(
+        input,
+        window,
+        move |this, _, event: &InputEvent, window, cx| {
+          if let InputEvent::PressEnter {
+            ..
+          } = event
+          {
+            this.add_combo(kind, window, cx);
+          }
+        },
+      )
       .detach();
     }
 
@@ -276,17 +305,23 @@ impl Render for GpuiKitConfigUI {
         h_flex()
           .flex_wrap()
           .gap_2()
-          .children(DetectMethod::ALL.iter().copied().enumerate().map(|(i, method)| {
-            DetectMethodCard {
-              id: ElementId::from(("detect-method", i)),
-              name: method.display_name(),
-              selected: method == current_method,
-              on_select: Box::new(cx.listener(move |this, _: &MouseUpEvent, _window, cx| {
-                this.config.detect_method = method;
-                cx.notify();
-              })),
-            }
-          })),
+          .children(
+            DetectMethod::ALL
+              .iter()
+              .copied()
+              .enumerate()
+              .map(|(i, method)| {
+                DetectMethodCard {
+                  id: ElementId::from(("detect-method", i)),
+                  name: method.display_name(),
+                  selected: method == current_method,
+                  on_select: Box::new(cx.listener(move |this, _: &MouseUpEvent, _window, cx| {
+                    this.config.detect_method = method;
+                    cx.notify();
+                  })),
+                }
+              }),
+          ),
       );
 
     let action_buttons = h_flex()
@@ -370,7 +405,7 @@ pub fn run(config: KeyConfig) -> Result<(), Box<dyn std::error::Error>> {
     // Ensure the vertical scrollbar is permanently visible whenever content overflows
     Theme::update(cx, |theme| {
       theme.scrollbar_mode = ScrollbarMode::Always;
-      theme.colors.scrollbar_thumb = rgb(0x94a3b8).into();       // slate-400 thumb
+      theme.colors.scrollbar_thumb = rgb(0x94a3b8).into(); // slate-400 thumb
       theme.colors.scrollbar_thumb_hover = rgb(0x64748b).into(); // slate-500 thumb on hover
     });
 
@@ -386,7 +421,7 @@ pub fn run(config: KeyConfig) -> Result<(), Box<dyn std::error::Error>> {
       window_bounds: Some(WindowBounds::Windowed(bounds)),
       window_min_size: Some(size(px(420.0), px(500.0))),
       titlebar: Some(TitlebarOptions {
-        title: Some(CONFIG_WINDOW_TITLE_GPUI.into()),
+        title: Some(CONFIG_WINDOW_TITLE.into()),
         ..Default::default()
       }),
       ..Default::default()

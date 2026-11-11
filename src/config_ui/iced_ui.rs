@@ -1,9 +1,23 @@
-use crate::config::{DetectMethod, KeyCombo, KeyConfig};
-use iced::{
-  Alignment, Element, Length, Task, Theme,
-  widget::{Space, button, column, container, pick_list, row, scrollable, text, text_input},
-};
 use std::process;
+
+use iced::Alignment;
+use iced::Element;
+use iced::Length;
+use iced::Task;
+use iced::Theme;
+use iced::widget::Space;
+use iced::widget::button;
+use iced::widget::column;
+use iced::widget::container;
+use iced::widget::pick_list;
+use iced::widget::row;
+use iced::widget::scrollable;
+use iced::widget::text;
+use iced::widget::text_input;
+
+use crate::config::DetectMethod;
+use crate::config::KeyCombo;
+use crate::config::KeyConfig;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -44,7 +58,7 @@ impl ConfigUI {
   }
 
   pub fn title(&self) -> String {
-    crate::config_ui::CONFIG_WINDOW_TITLE_ICED.to_string()
+    crate::config_ui::CONFIG_WINDOW_TITLE.to_string()
   }
 
   pub fn theme(&self) -> Theme {

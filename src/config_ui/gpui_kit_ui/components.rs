@@ -2,11 +2,24 @@
 
 extern crate gpui_kit as gpui;
 
-use gpui_kit::{
-  App, ElementId, FontWeight, InteractiveElement, IntoElement, MouseButton, MouseUpEvent,
-  ParentElement, RenderOnce, SharedString, Styled, Window, div, prelude::FluentBuilder, px, rgb,
-  component::{h_flex, v_flex},
-};
+use gpui_kit::App;
+use gpui_kit::ElementId;
+use gpui_kit::FontWeight;
+use gpui_kit::InteractiveElement;
+use gpui_kit::IntoElement;
+use gpui_kit::MouseButton;
+use gpui_kit::MouseUpEvent;
+use gpui_kit::ParentElement;
+use gpui_kit::RenderOnce;
+use gpui_kit::SharedString;
+use gpui_kit::Styled;
+use gpui_kit::Window;
+use gpui_kit::component::h_flex;
+use gpui_kit::component::v_flex;
+use gpui_kit::div;
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::px;
+use gpui_kit::rgb;
 
 use super::theme::Palette;
 
@@ -95,7 +108,11 @@ impl PillButton {
     };
     Self {
       id: id.into(),
-      label: if recording { "Stop".into() } else { "Record".into() },
+      label: if recording {
+        "Stop".into()
+      } else {
+        "Record".into()
+      },
       bg,
       hover_bg,
       text_color: Palette::WHITE,
@@ -173,7 +190,11 @@ impl RenderOnce for KeyRow {
           .text_color(rgb(Palette::TEXT_PRIMARY))
           .child(self.label),
       )
-      .child(PillButton::danger_badge(self.remove_id, "Remove", self.on_remove))
+      .child(PillButton::danger_badge(
+        self.remove_id,
+        "Remove",
+        self.on_remove,
+      ))
   }
 }
 
@@ -195,11 +216,23 @@ impl RenderOnce for DetectMethodCard {
       .py_1p5()
       .rounded_md()
       .border_1()
-      .border_color(if self.selected { rgb(Palette::PRIMARY) } else { rgb(Palette::BORDER_CONTROL) })
-      .bg(if self.selected { rgb(Palette::PRIMARY) } else { rgb(Palette::BG_CARD) })
+      .border_color(if self.selected {
+        rgb(Palette::PRIMARY)
+      } else {
+        rgb(Palette::BORDER_CONTROL)
+      })
+      .bg(if self.selected {
+        rgb(Palette::PRIMARY)
+      } else {
+        rgb(Palette::BG_CARD)
+      })
       .text_xs()
       .text_center()
-      .text_color(if self.selected { rgb(Palette::WHITE) } else { rgb(Palette::TEXT_PRIMARY) })
+      .text_color(if self.selected {
+        rgb(Palette::WHITE)
+      } else {
+        rgb(Palette::TEXT_PRIMARY)
+      })
       .cursor_pointer()
       .hover(move |s| {
         if !self.selected {

@@ -1,33 +1,55 @@
 pub mod gpui_kit_ui;
 pub mod iced_ui;
 
-use std::sync::{
-  Mutex,
-  atomic::{AtomicBool, Ordering},
-};
+use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use once_cell::sync::Lazy;
-use windows::Win32::{
-  Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, LPARAM, LRESULT, WPARAM},
-  System::Threading::CreateMutexW,
-  UI::{
-    Input::KeyboardAndMouse::{
-      VIRTUAL_KEY, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_RCONTROL,
-      VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT,
-    },
-    WindowsAndMessaging::{
-      BringWindowToTop, CallNextHookEx, FindWindowW, GetForegroundWindow, GetWindowThreadProcessId,
-      HHOOK, IsIconic, KBDLLHOOKSTRUCT, LLKHF_INJECTED, SW_RESTORE, SetForegroundWindow,
-      SetWindowsHookExW, ShowWindow, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP,
-      WM_SYSKEYDOWN, WM_SYSKEYUP,
-    },
-  },
-};
+use windows::Win32::Foundation::CloseHandle;
+use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
+use windows::Win32::Foundation::GetLastError;
+use windows::Win32::Foundation::HANDLE;
+use windows::Win32::Foundation::LPARAM;
+use windows::Win32::Foundation::LRESULT;
+use windows::Win32::Foundation::WPARAM;
+use windows::Win32::System::Threading::CreateMutexW;
+use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_CONTROL;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_LCONTROL;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_LMENU;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_LSHIFT;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_LWIN;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_MENU;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_RCONTROL;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_RMENU;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_RSHIFT;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_RWIN;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_SHIFT;
+use windows::Win32::UI::WindowsAndMessaging::BringWindowToTop;
+use windows::Win32::UI::WindowsAndMessaging::CallNextHookEx;
+use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
+use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+use windows::Win32::UI::WindowsAndMessaging::HHOOK;
+use windows::Win32::UI::WindowsAndMessaging::IsIconic;
+use windows::Win32::UI::WindowsAndMessaging::KBDLLHOOKSTRUCT;
+use windows::Win32::UI::WindowsAndMessaging::LLKHF_INJECTED;
+use windows::Win32::UI::WindowsAndMessaging::SW_RESTORE;
+use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+use windows::Win32::UI::WindowsAndMessaging::SetWindowsHookExW;
+use windows::Win32::UI::WindowsAndMessaging::ShowWindow;
+use windows::Win32::UI::WindowsAndMessaging::UnhookWindowsHookEx;
+use windows::Win32::UI::WindowsAndMessaging::WH_KEYBOARD_LL;
+use windows::Win32::UI::WindowsAndMessaging::WM_KEYDOWN;
+use windows::Win32::UI::WindowsAndMessaging::WM_KEYUP;
+use windows::Win32::UI::WindowsAndMessaging::WM_SYSKEYDOWN;
+use windows::Win32::UI::WindowsAndMessaging::WM_SYSKEYUP;
 
-use crate::{config::format_key_combo, wide_string::ToWide};
+use crate::config::format_key_combo;
+use crate::wide_string::ToWide;
 
-pub const CONFIG_WINDOW_TITLE_GPUI: &str = "WinKeyLock Configuration (GPUI)";
-pub const CONFIG_WINDOW_TITLE_ICED: &str = "WinKeyLock Configuration";
+pub const CONFIG_WINDOW_TITLE: &str = "WinKeyLock Configuration";
 
 const CONFIG_UI_MUTEX_NAME: &str = "winkeylock_config_ui";
 
@@ -62,20 +84,18 @@ pub const DEFAULT_BACKEND: UiBackend = UiBackend::GpuiKit;
 
 /// Find an existing configuration window and bring it to the foreground if present.
 pub fn focus_existing_config_window() -> bool {
-  for title in [CONFIG_WINDOW_TITLE_GPUI, CONFIG_WINDOW_TITLE_ICED] {
-    let wide_title = title.to_wide();
-    unsafe {
-      if let Ok(hwnd) = FindWindowW(None, wide_title.as_pwstr())
-        && !hwnd.is_invalid()
-        && !hwnd.0.is_null()
-      {
-        if IsIconic(hwnd).as_bool() {
-          let _ = ShowWindow(hwnd, SW_RESTORE);
-        }
-        let _ = BringWindowToTop(hwnd);
-        let _ = SetForegroundWindow(hwnd);
-        return true;
+  let wide_title = CONFIG_WINDOW_TITLE.to_wide();
+  unsafe {
+    if let Ok(hwnd) = FindWindowW(None, wide_title.as_pwstr())
+      && !hwnd.is_invalid()
+      && !hwnd.0.is_null()
+    {
+      if IsIconic(hwnd).as_bool() {
+        let _ = ShowWindow(hwnd, SW_RESTORE);
       }
+      let _ = BringWindowToTop(hwnd);
+      let _ = SetForegroundWindow(hwnd);
+      return true;
     }
   }
   false

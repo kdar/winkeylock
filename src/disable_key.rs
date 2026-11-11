@@ -1,29 +1,61 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use once_cell::sync::OnceCell;
-use windows::{
-  Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
-    Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow},
-    UI::{
-      Input::KeyboardAndMouse::{
-        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput,
-        VIRTUAL_KEY, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_RCONTROL,
-        VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT,
-      },
-      Shell::{QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState},
-      WindowsAndMessaging::{
-        CallNextHookEx, EnumChildWindows, GWL_STYLE, GetForegroundWindow, GetWindowLongPtrW,
-        GetWindowRect, HHOOK, KBDLLHOOKSTRUCT, LLKHF_INJECTED, SetWindowsHookExW,
-        UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
-        WS_CAPTION, WS_SYSMENU,
-      },
-    },
-  },
-  core::{BOOL, Error as WinError},
-};
+use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::LPARAM;
+use windows::Win32::Foundation::LRESULT;
+use windows::Win32::Foundation::RECT;
+use windows::Win32::Foundation::WPARAM;
+use windows::Win32::Graphics::Gdi::GetMonitorInfoW;
+use windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST;
+use windows::Win32::Graphics::Gdi::MONITORINFO;
+use windows::Win32::Graphics::Gdi::MonitorFromWindow;
+use windows::Win32::UI::Input::KeyboardAndMouse::INPUT;
+use windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0;
+use windows::Win32::UI::Input::KeyboardAndMouse::INPUT_KEYBOARD;
+use windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS;
+use windows::Win32::UI::Input::KeyboardAndMouse::KEYBDINPUT;
+use windows::Win32::UI::Input::KeyboardAndMouse::KEYEVENTF_KEYUP;
+use windows::Win32::UI::Input::KeyboardAndMouse::SendInput;
+use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_CONTROL;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_LCONTROL;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_LMENU;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_LSHIFT;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_LWIN;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_MENU;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_RCONTROL;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_RMENU;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_RSHIFT;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_RWIN;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_SHIFT;
+use windows::Win32::UI::Shell::QUNS_BUSY;
+use windows::Win32::UI::Shell::QUNS_RUNNING_D3D_FULL_SCREEN;
+use windows::Win32::UI::Shell::SHQueryUserNotificationState;
+use windows::Win32::UI::WindowsAndMessaging::CallNextHookEx;
+use windows::Win32::UI::WindowsAndMessaging::EnumChildWindows;
+use windows::Win32::UI::WindowsAndMessaging::GWL_STYLE;
+use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+use windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW;
+use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+use windows::Win32::UI::WindowsAndMessaging::HHOOK;
+use windows::Win32::UI::WindowsAndMessaging::KBDLLHOOKSTRUCT;
+use windows::Win32::UI::WindowsAndMessaging::LLKHF_INJECTED;
+use windows::Win32::UI::WindowsAndMessaging::SetWindowsHookExW;
+use windows::Win32::UI::WindowsAndMessaging::UnhookWindowsHookEx;
+use windows::Win32::UI::WindowsAndMessaging::WH_KEYBOARD_LL;
+use windows::Win32::UI::WindowsAndMessaging::WM_KEYDOWN;
+use windows::Win32::UI::WindowsAndMessaging::WM_KEYUP;
+use windows::Win32::UI::WindowsAndMessaging::WM_SYSKEYDOWN;
+use windows::Win32::UI::WindowsAndMessaging::WM_SYSKEYUP;
+use windows::Win32::UI::WindowsAndMessaging::WS_CAPTION;
+use windows::Win32::UI::WindowsAndMessaging::WS_SYSMENU;
+use windows::core::BOOL;
+use windows::core::Error as WinError;
 
-use crate::config::{ConfigManager, DetectMethod};
+use crate::config::ConfigManager;
+use crate::config::DetectMethod;
 
 static SHIFT_DOWN: AtomicBool = AtomicBool::new(false);
 static CTRL_DOWN: AtomicBool = AtomicBool::new(false);
