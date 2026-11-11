@@ -1,6 +1,3 @@
-// Temporarily disabled while evaluating gpui-kit:
-// pub mod gpui_component_ui;
-// pub mod gpui_ui;
 pub mod gpui_kit_ui;
 pub mod iced_ui;
 
