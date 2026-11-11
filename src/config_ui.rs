@@ -1,4 +1,7 @@
-pub mod gpui_ui;
+// Temporarily disabled while evaluating gpui-kit:
+// pub mod gpui_component_ui;
+// pub mod gpui_ui;
+pub mod gpui_kit_ui;
 pub mod iced_ui;
 
 use std::sync::{
@@ -33,31 +36,32 @@ const CONFIG_UI_MUTEX_NAME: &str = "winkeylock_config_ui";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiBackend {
-  Gpui,
+  /// GPUI Kit with bundled component system (`gpui_kit_ui.rs`).
+  GpuiKit,
   Iced,
 }
 
 impl UiBackend {
   pub fn as_str(&self) -> &'static str {
     match self {
-      UiBackend::Gpui => "gpui",
+      UiBackend::GpuiKit => "gpui-kit",
       UiBackend::Iced => "iced",
     }
   }
 
   pub fn from_arg(arg: &str) -> Option<Self> {
     match arg.trim().to_ascii_lowercase().as_str() {
-      "gpui" => Some(UiBackend::Gpui),
+      "gpui-kit" | "gpui_kit" | "gpui" | "gpui-component" => Some(UiBackend::GpuiKit),
       "iced" => Some(UiBackend::Iced),
       _ => None,
     }
   }
 }
 
-/// Switch this constant between `UiBackend::Gpui` and `UiBackend::Iced`
+/// Switch this constant between `UiBackend::GpuiKit` and `UiBackend::Iced`
 /// to change the default configuration UI backend.
-/// You can also pass `--config-ui=gpui` or `--config-ui=iced` on the command line.
-pub const DEFAULT_BACKEND: UiBackend = UiBackend::Gpui;
+/// You can also pass `--config-ui=gpui-kit` or `--config-ui=iced` on the command line.
+pub const DEFAULT_BACKEND: UiBackend = UiBackend::GpuiKit;
 
 /// Find an existing configuration window and bring it to the foreground if present.
 pub fn focus_existing_config_window() -> bool {
@@ -285,7 +289,7 @@ pub fn run_config_ui_with_backend(
   };
 
   match backend {
-    UiBackend::Gpui => gpui_ui::run(config),
+    UiBackend::GpuiKit => gpui_kit_ui::run(config),
     UiBackend::Iced => iced_ui::run(config),
   }
 }

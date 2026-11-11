@@ -5,6 +5,7 @@ cargo build --profile release-fast
 '''
 
 [tasks.build]
+depends = ["kill2"]
 shell = 'powershell -Command'
 run = '''
 cargo build --release
@@ -12,10 +13,33 @@ cargo build --release
 
 [tasks.kill]
 shell = "powershell -Command"
-run = 'if (Get-Process winkeylock -ErrorAction SilentlyContinue) { taskkill /IM winkeylock.exe /F }'
+run = 'if (Get-Process winkeylock -ErrorAction SilentlyContinue) { sudo taskkill /IM winkeylock.exe /F }'
+
+[tasks.kill2]
+shell = "powershell -Command"
+run = '''
+$taskName = "KillWinkeylock"
+
+# 1. Check if the task exists; if not, prompt UAC once to create it with highest privileges
+schtasks /query /tn $taskName *>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Scheduled task '$taskName' not found. Creating it (one-time UAC prompt)..." -ForegroundColor Yellow
+    Start-Process schtasks.exe -ArgumentList "/Create /TN $taskName /TR `"taskkill.exe /F /IM winkeylock.exe`" /SC ONCE /ST 00:00 /RL HIGHEST /F" -Verb RunAs -Wait
+}
+
+# 2. If winkeylock is running, run the elevated task to kill it and wait until it has fully exited
+if (Get-Process winkeylock -ErrorAction SilentlyContinue) {
+    schtasks /Run /TN $taskName | Out-Null
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    while ((Get-Process winkeylock -ErrorAction SilentlyContinue) -and ($sw.ElapsedMilliseconds -lt 5000)) {
+        Start-Sleep -Milliseconds 50
+    }
+    Write-Host "winkeylock terminated." -ForegroundColor Green
+}
+'''
 
 [tasks.build-run]
-depends = ["kill", "build"]
+depends = ["build"]
 run = 'target\release\winkeylock.exe'
 
 [tasks.tag]

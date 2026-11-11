@@ -14,7 +14,12 @@ exclude = ["/dev/*"]
 [dependencies]
 dirs = "7.0.0"
 elevated-command = "1.1.3"
-gpui = { version = "0.2.2", default-features = false }
+# gpui and gpui-component temporarily disabled in favor of gpui-kit
+# gpui = "0.2.2"
+# gpui-component = "0.5.0"
+gpui-kit = "0.9.1"
+# naga with termcolor feature for compatibility
+naga = { version = "27", default-features = false, features = ["termcolor"] }
 iced = { version = "0.14", default-features = false, features = [
   "wgpu",
   "thread-pool",
@@ -50,7 +55,7 @@ features = [
 
 [package.metadata.winresource]
 OriginalFilename = "winkeylock.exe"
-LegalCopyright = "Copyright 2022 Kevin Darlington. MIT licensed."
+LegalCopyright = "Copyright 2026 Kevin Darlington. MIT licensed."
 FileDescription = "Winkey Lock"
 ProductName = "Winkey Lock"
 

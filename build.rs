@@ -4,26 +4,9 @@ fn main() {
   if std::env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {
     let mut res = winresource::WindowsResource::new();
     res.set_icon("src/icon.ico");
-    res.set_manifest(
-      r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0" xmlns:asmv3="urn:schemas-microsoft-com:asm.v3">
-    <asmv3:application>
-        <asmv3:windowsSettings>
-            <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true</dpiAware>
-            <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
-        </asmv3:windowsSettings>
-    </asmv3:application>
-    <dependency>
-        <dependentAssembly>
-            <assemblyIdentity type="win32"
-                name="Microsoft.Windows.Common-Controls"
-                version="6.0.0.0"
-                processorArchitecture="*"
-                publicKeyToken="6595b64144ccf1df"
-                language="*" />
-        </dependentAssembly>
-    </dependency>
-</assembly>"#,
-    );
+    // No manifest here: gpui's `windows-manifest` feature (enabled via gpui-component)
+    // embeds one with Common-Controls v6 + PerMonitorV2 DPI awareness, which TaskDialogIndirect
+    // and the UI need. Embedding a second manifest causes a "duplicate resource" link error.
     res.compile().unwrap();
   }
 }
