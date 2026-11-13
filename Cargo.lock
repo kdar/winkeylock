@@ -9667,7 +9667,7 @@ dependencies = [
 
 [[package]]
 name = "winkeylock"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "dirs 7.0.0",
  "elevated-command",
