@@ -29,18 +29,19 @@ use gpui_kit::TitlebarOptions;
 use gpui_kit::Window;
 use gpui_kit::WindowBounds;
 use gpui_kit::WindowOptions;
-use gpui_kit::base::ScrollbarMode;
-use gpui_kit::component::Theme;
+use gpui_kit::component::IndexPath;
 use gpui_kit::component::h_flex;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::input::InputEvent;
 use gpui_kit::component::input::InputState;
 use gpui_kit::component::scroll::ScrollableElement;
+use gpui_kit::component::select::Select;
+use gpui_kit::component::select::SelectEvent;
+use gpui_kit::component::select::SelectState;
 use gpui_kit::component::v_flex;
 use gpui_kit::div;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::px;
-use gpui_kit::rgb;
 use gpui_kit::size;
 use theme::Palette;
 
@@ -65,10 +66,25 @@ pub struct GpuiKitConfigUI {
   recording_target: ListKind,
   error_message: Option<SharedString>,
   show_help: bool,
+  theme_select: Entity<SelectState<Vec<SharedString>>>,
 }
 
 impl GpuiKitConfigUI {
-  fn new(config: KeyConfig, window: &mut Window, cx: &mut Context<Self>) -> Self {
+  fn new(mut config: KeyConfig, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    let selected = theme::apply(config.theme.as_deref().unwrap_or(theme::DEFAULT_THEME), cx);
+    config.theme = Some(selected.to_string());
+    let names = theme::theme_names(cx);
+    let index = names.iter().position(|name| name == &selected).unwrap_or(0);
+    let theme_select = cx
+      .new(|cx| SelectState::new(names, Some(IndexPath::new(index)), window, cx).searchable(true));
+    cx.subscribe_in(&theme_select, window, |this, _, event, _, cx| {
+      if let SelectEvent::Confirm(Some(name)) = event {
+        let selected = theme::apply(name, cx);
+        this.config.theme = Some(selected.to_string());
+        cx.notify();
+      }
+    })
+    .detach();
     let blacklist_input = cx.new(|cx| {
       InputState::new(window, cx)
         .placeholder("Type a combo (e.g. 'lwin', 'lwin+s') or click Record")
@@ -118,6 +134,7 @@ impl GpuiKitConfigUI {
       recording_target: ListKind::Blacklist,
       error_message: None,
       show_help: false,
+      theme_select,
     }
   }
 
@@ -193,7 +210,7 @@ impl GpuiKitConfigUI {
       v_flex().child(
         div()
           .text_sm()
-          .text_color(rgb(Palette::TEXT_MUTED))
+          .text_color(Palette::MutedText.color(cx))
           .py_1()
           .child(empty_text),
       )
@@ -221,13 +238,13 @@ impl GpuiKitConfigUI {
         div()
           .text_base()
           .font_weight(FontWeight::SEMIBOLD)
-          .text_color(rgb(Palette::TEXT_PRIMARY))
+          .text_color(Palette::Text.color(cx))
           .child(title),
       )
       .child(
         div()
           .text_xs()
-          .text_color(rgb(Palette::TEXT_MUTED))
+          .text_color(Palette::MutedText.color(cx))
           .child(description),
       )
       .child(rows)
@@ -267,6 +284,28 @@ impl Render for GpuiKitConfigUI {
     let show_help = self.show_help;
     let current_method = self.config.detect_method;
 
+    let theme_selector = h_flex()
+      .flex_1()
+      .min_w(px(0.0))
+      .max_w(px(260.0))
+      .mr_auto()
+      .items_center()
+      .gap_2()
+      .child(
+        div()
+          .flex_shrink_0()
+          .text_xs()
+          .text_color(Palette::Text.color(cx))
+          .child("Theme"),
+      )
+      .child(
+        div().flex_1().min_w(px(0.0)).child(
+          Select::new(&self.theme_select)
+            .accessibility_label("Theme")
+            .w_full(),
+        ),
+      );
+
     let header = h_flex()
       .items_center()
       .justify_between()
@@ -277,7 +316,7 @@ impl Render for GpuiKitConfigUI {
           .min_w(px(0.0))
           .whitespace_normal()
           .text_sm()
-          .text_color(rgb(Palette::TEXT_SECONDARY))
+          .text_color(Palette::SecondaryText.color(cx))
           .child("Configure which keys should be blocked or allowed. Examples: 'lwin', 'ctrl+c', 'shift+alt+tab'"),
       )
       .child(PillButton::secondary(
@@ -299,13 +338,13 @@ impl Render for GpuiKitConfigUI {
         div()
           .text_base()
           .font_weight(FontWeight::SEMIBOLD)
-          .text_color(rgb(Palette::TEXT_PRIMARY))
+          .text_color(Palette::Text.color(cx))
           .child("Detection Method"),
       )
       .child(
         div()
           .text_xs()
-          .text_color(rgb(Palette::TEXT_MUTED))
+          .text_color(Palette::MutedText.color(cx))
           .child("How to detect if the focused window is a game"),
       )
       .child(
@@ -340,13 +379,13 @@ impl Render for GpuiKitConfigUI {
       .w_full()
       .flex_shrink_0()
       .items_center()
-      .justify_end()
       .gap_3()
       .px_5()
       .py_3()
-      .bg(rgb(Palette::CANVAS))
+      .bg(Palette::Canvas.color(cx))
       .border_t_1()
-      .border_color(rgb(Palette::BORDER_CARD))
+      .border_color(Palette::CardBorder.color(cx))
+      .child(theme_selector)
       .child(PillButton::primary(
         "save-button",
         "Save",
@@ -365,7 +404,7 @@ impl Render for GpuiKitConfigUI {
 
     v_flex()
       .size_full()
-      .bg(rgb(Palette::CANVAS))
+      .bg(Palette::Canvas.color(cx))
       .child(
         v_flex()
           .flex_1()
@@ -397,11 +436,11 @@ impl Render for GpuiKitConfigUI {
                 .whitespace_normal()
                 .p_2()
                 .rounded_md()
-                .bg(rgb(Palette::ERROR_BG))
+                .bg(Palette::ErrorBackground.color(cx))
                 .border_1()
-                .border_color(rgb(Palette::ERROR_BORDER))
+                .border_color(Palette::ErrorBorder.color(cx))
                 .text_xs()
-                .text_color(rgb(Palette::ERROR_TEXT))
+                .text_color(Palette::ErrorText.color(cx))
                 .child(err.clone()),
             )
           }),
@@ -413,13 +452,7 @@ impl Render for GpuiKitConfigUI {
 pub fn run(config: KeyConfig) -> Result<(), Box<dyn std::error::Error>> {
   gpui_kit::application().run(move |cx: &mut App| {
     gpui_kit::init(cx);
-
-    // Ensure the vertical scrollbar is permanently visible whenever content overflows
-    Theme::update(cx, |theme| {
-      theme.scrollbar_mode = ScrollbarMode::Always;
-      theme.colors.scrollbar_thumb = rgb(0x94a3b8).into(); // slate-400 thumb
-      theme.colors.scrollbar_thumb_hover = rgb(0x64748b).into(); // slate-500 thumb on hover
-    });
+    theme::init(cx);
 
     cx.on_window_closed(|cx, _window_id| {
       if cx.windows().is_empty() {

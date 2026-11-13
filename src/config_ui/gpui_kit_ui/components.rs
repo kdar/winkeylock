@@ -22,7 +22,6 @@ use gpui_kit::component::v_flex;
 use gpui_kit::div;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::px;
-use gpui_kit::rgb;
 
 use super::theme::Palette;
 
@@ -37,9 +36,9 @@ fn build_tooltip(text: SharedString, window: &mut Window, cx: &mut App) -> AnyVi
 pub struct PillButton {
   id: ElementId,
   label: SharedString,
-  bg: u32,
-  hover_bg: u32,
-  text_color: u32,
+  bg: Palette,
+  hover_bg: Palette,
+  text_color: Palette,
   font_weight: FontWeight,
   padding_x: gpui_kit::Pixels,
   padding_y: gpui_kit::Pixels,
@@ -57,9 +56,9 @@ impl PillButton {
     Self {
       id: id.into(),
       label: label.into(),
-      bg: Palette::PRIMARY,
-      hover_bg: Palette::PRIMARY_HOVER,
-      text_color: Palette::WHITE,
+      bg: Palette::Primary,
+      hover_bg: Palette::PrimaryHover,
+      text_color: Palette::PrimaryText,
       font_weight: FontWeight::SEMIBOLD,
       padding_x: px(16.0),
       padding_y: px(6.0),
@@ -77,9 +76,9 @@ impl PillButton {
     Self {
       id: id.into(),
       label: label.into(),
-      bg: Palette::BTN_SECONDARY,
-      hover_bg: Palette::BTN_SECONDARY_HOVER,
-      text_color: Palette::TEXT_PRIMARY,
+      bg: Palette::Secondary,
+      hover_bg: Palette::SecondaryHover,
+      text_color: Palette::SecondaryButtonText,
       font_weight: FontWeight::NORMAL,
       padding_x: px(12.0),
       padding_y: px(6.0),
@@ -97,9 +96,9 @@ impl PillButton {
     Self {
       id: id.into(),
       label: label.into(),
-      bg: Palette::GREEN,
-      hover_bg: Palette::GREEN_HOVER,
-      text_color: Palette::WHITE,
+      bg: Palette::Success,
+      hover_bg: Palette::SuccessHover,
+      text_color: Palette::SuccessText,
       font_weight: FontWeight::NORMAL,
       padding_x: px(12.0),
       padding_y: px(6.0),
@@ -115,9 +114,9 @@ impl PillButton {
     on_click: impl Fn(&MouseUpEvent, &mut Window, &mut App) + 'static,
   ) -> Self {
     let (bg, hover_bg) = if recording {
-      (Palette::AMBER, Palette::AMBER_HOVER)
+      (Palette::Warning, Palette::WarningHover)
     } else {
-      (Palette::RECORD_IDLE, Palette::RECORD_IDLE_HOVER)
+      (Palette::Record, Palette::RecordHover)
     };
     Self {
       id: id.into(),
@@ -128,7 +127,11 @@ impl PillButton {
       },
       bg,
       hover_bg,
-      text_color: Palette::WHITE,
+      text_color: if recording {
+        Palette::WarningText
+      } else {
+        Palette::RecordText
+      },
       font_weight: FontWeight::NORMAL,
       padding_x: px(12.0),
       padding_y: px(6.0),
@@ -151,9 +154,9 @@ impl PillButton {
     Self {
       id: id.into(),
       label: label.into(),
-      bg: Palette::RED,
-      hover_bg: Palette::RED_HOVER,
-      text_color: Palette::WHITE,
+      bg: Palette::Danger,
+      hover_bg: Palette::DangerHover,
+      text_color: Palette::DangerText,
       font_weight: FontWeight::NORMAL,
       padding_x: px(8.0),
       padding_y: px(2.0),
@@ -170,18 +173,21 @@ impl PillButton {
 }
 
 impl RenderOnce for PillButton {
-  fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+  fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    let bg = self.bg.color(cx);
+    let hover_bg = self.hover_bg.color(cx);
+    let text_color = self.text_color.color(cx);
     div()
       .id(self.id)
       .flex_shrink_0()
       .px(self.padding_x)
       .py(self.padding_y)
       .rounded_md()
-      .bg(rgb(self.bg))
+      .bg(bg)
       .font_weight(self.font_weight)
-      .text_color(rgb(self.text_color))
+      .text_color(text_color)
       .cursor_pointer()
-      .hover(move |s| s.bg(rgb(self.hover_bg)))
+      .hover(move |s| s.bg(hover_bg))
       .when(self.text_size_sm, |s| s.text_sm())
       .when(!self.text_size_sm, |s| s.text_xs())
       .when_some(self.tooltip, |s, text| {
@@ -201,21 +207,21 @@ pub struct KeyRow {
 }
 
 impl RenderOnce for KeyRow {
-  fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+  fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
     h_flex()
       .items_center()
       .justify_between()
       .px_3()
       .py_1p5()
       .rounded_md()
-      .bg(rgb(Palette::BG_CARD))
+      .bg(Palette::Card.color(cx))
       .border_1()
-      .border_color(rgb(Palette::BORDER_CARD))
+      .border_color(Palette::CardBorder.color(cx))
       .child(
         div()
           .text_sm()
           .font_weight(FontWeight::MEDIUM)
-          .text_color(rgb(Palette::TEXT_PRIMARY))
+          .text_color(Palette::Text.color(cx))
           .child(self.label),
       )
       .child(
@@ -236,7 +242,9 @@ pub struct DetectMethodCard {
 }
 
 impl RenderOnce for DetectMethodCard {
-  fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+  fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    let help_bg = Palette::Help.color(cx);
+    let primary_hover = Palette::PrimaryHover.color(cx);
     div()
       .id(self.id)
       .flex_1()
@@ -245,28 +253,28 @@ impl RenderOnce for DetectMethodCard {
       .rounded_md()
       .border_1()
       .border_color(if self.selected {
-        rgb(Palette::PRIMARY)
+        Palette::Primary.color(cx)
       } else {
-        rgb(Palette::BORDER_CONTROL)
+        Palette::ControlBorder.color(cx)
       })
       .bg(if self.selected {
-        rgb(Palette::PRIMARY)
+        Palette::Primary.color(cx)
       } else {
-        rgb(Palette::BG_CARD)
+        Palette::Card.color(cx)
       })
       .text_xs()
       .text_center()
       .text_color(if self.selected {
-        rgb(Palette::WHITE)
+        Palette::PrimaryText.color(cx)
       } else {
-        rgb(Palette::TEXT_PRIMARY)
+        Palette::Text.color(cx)
       })
       .cursor_pointer()
       .hover(move |s| {
         if !self.selected {
-          s.bg(rgb(Palette::BG_HELP))
+          s.bg(help_bg)
         } else {
-          s.bg(rgb(Palette::PRIMARY_HOVER))
+          s.bg(primary_hover)
         }
       })
       .on_mouse_up(MouseButton::Left, self.on_select)
@@ -280,23 +288,23 @@ impl RenderOnce for DetectMethodCard {
 pub struct HelpCard;
 
 impl RenderOnce for HelpCard {
-  fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+  fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
     v_flex()
       .w_full()
       .whitespace_normal()
       .gap_1()
       .p_3()
       .rounded_md()
-      .bg(rgb(Palette::BG_HELP))
+      .bg(Palette::Help.color(cx))
       .border_1()
-      .border_color(rgb(Palette::BORDER_CONTROL))
+      .border_color(Palette::ControlBorder.color(cx))
       .text_xs()
-      .text_color(rgb(Palette::TEXT_SECONDARY))
+      .text_color(Palette::SecondaryText.color(cx))
       .child(
         div()
           .text_sm()
           .font_weight(FontWeight::SEMIBOLD)
-          .text_color(rgb(Palette::TEXT_PRIMARY))
+          .text_color(Palette::Text.color(cx))
           .child("How to enter key combinations"),
       )
       .child("• Use '+' between each modifier and key, e.g. 'ctrl+shift+esc'.")

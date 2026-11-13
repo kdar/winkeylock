@@ -523,6 +523,9 @@ pub struct KeyConfig {
   /// Whether the app should run as administrator
   #[serde(default)]
   pub run_as_admin: bool,
+  /// Configuration window theme name; None preserves the original Default look.
+  #[serde(default)]
+  pub theme: Option<String>,
 }
 
 impl Default for KeyConfig {
@@ -536,6 +539,7 @@ impl Default for KeyConfig {
       whitelist: vec![],
       detect_method: DetectMethod::default(),
       run_as_admin: false,
+      theme: None,
     }
   }
 }
@@ -762,12 +766,37 @@ mod tests {
   use super::*;
 
   #[test]
+  fn config_without_theme_keeps_original_appearance() {
+    let config: KeyConfig = serde_json::from_str(
+      r#"{"blacklist":["lwin"],"whitelist":[],"detect_method":"fullscreen","run_as_admin":true}"#,
+    )
+    .unwrap();
+    assert!(config.theme.is_none());
+    assert_eq!(config.detect_method, DetectMethod::Fullscreen);
+    assert!(config.run_as_admin);
+    assert_eq!(config.blacklist[0].string_repr, "lwin");
+  }
+
+  #[test]
+  fn selected_theme_survives_config_roundtrip() {
+    let config = KeyConfig {
+      theme: Some("Catppuccin Mocha".into()),
+      ..KeyConfig::default()
+    };
+    let encoded = serde_json::to_string(&config).unwrap();
+    let decoded: KeyConfig = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(decoded.theme.as_deref(), Some("Catppuccin Mocha"));
+    assert_eq!(decoded.blacklist[0].string_repr, "lwin");
+  }
+
+  #[test]
   fn test_lwin_blacklisted_no_whitelist_blocks_all_lwin_activations() {
     let config = KeyConfig {
       blacklist: vec![KeyCombo::from_string("lwin").unwrap()],
       whitelist: vec![],
       detect_method: DetectMethod::default(),
       run_as_admin: false,
+      theme: None,
     };
 
     assert!(!config.has_potential_whitelist_match(false, false, false, true, false));
@@ -793,6 +822,7 @@ mod tests {
       whitelist: vec![KeyCombo::from_string("lwin+shift+s").unwrap()],
       detect_method: DetectMethod::default(),
       run_as_admin: false,
+      theme: None,
     };
 
     assert!(config.has_potential_whitelist_match(false, false, false, true, false));
@@ -812,6 +842,7 @@ mod tests {
       whitelist: vec![KeyCombo::from_string("ctrl+c").unwrap()],
       detect_method: DetectMethod::default(),
       run_as_admin: false,
+      theme: None,
     };
 
     assert!(config.has_potential_whitelist_match(false, true, false, false, false));

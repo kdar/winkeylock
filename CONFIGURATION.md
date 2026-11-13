@@ -29,6 +29,19 @@ Key combinations that should be explicitly allowed, even if they match a blackli
 }
 ```
 
+## Configuration Window Theme
+
+In the GPUI Kit configuration window, use the searchable **Theme** selector to
+preview a theme, then click **Save** to remember it. **Cancel** discards the choice.
+**Default** preserves WinKeyLock's original light palette and layout. Other choices
+include GPUI Kit's Default Dark, Catppuccin, Tokyo Night, Gruvbox, and Solarized
+variants. Themes are bundled with the application and work offline.
+
+The choice is stored as a theme name in `config.json`, for example
+`"theme": "Catppuccin Mocha"`. Older configs without a theme and unrecognized names
+use **Default**. This setting applies to the GPUI Kit UI; the Iced UI preserves the
+setting without applying it.
+
 ## Key Combination Format
 
 Key combinations are specified as strings using the format: `modifier+...+key`
