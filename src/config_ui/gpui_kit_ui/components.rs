@@ -2,6 +2,7 @@
 
 extern crate gpui_kit as gpui;
 
+use gpui_kit::AnyView;
 use gpui_kit::App;
 use gpui_kit::ElementId;
 use gpui_kit::FontWeight;
@@ -12,9 +13,11 @@ use gpui_kit::MouseUpEvent;
 use gpui_kit::ParentElement;
 use gpui_kit::RenderOnce;
 use gpui_kit::SharedString;
+use gpui_kit::StatefulInteractiveElement;
 use gpui_kit::Styled;
 use gpui_kit::Window;
 use gpui_kit::component::h_flex;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::v_flex;
 use gpui_kit::div;
 use gpui_kit::prelude::FluentBuilder;
@@ -22,6 +25,12 @@ use gpui_kit::px;
 use gpui_kit::rgb;
 
 use super::theme::Palette;
+
+/// Keep longer explanations readable in the narrow configuration window.
+fn build_tooltip(text: SharedString, window: &mut Window, cx: &mut App) -> AnyView {
+  Tooltip::element(move |_, _| div().w(px(280.0)).whitespace_normal().child(text.clone()))
+    .build(window, cx)
+}
 
 /// Interactive pill button with hand cursor and soft hover feedback.
 #[derive(IntoElement)]
@@ -35,6 +44,7 @@ pub struct PillButton {
   padding_x: gpui_kit::Pixels,
   padding_y: gpui_kit::Pixels,
   text_size_sm: bool,
+  tooltip: Option<SharedString>,
   on_click: Box<dyn Fn(&MouseUpEvent, &mut Window, &mut App)>,
 }
 
@@ -54,6 +64,7 @@ impl PillButton {
       padding_x: px(16.0),
       padding_y: px(6.0),
       text_size_sm: true,
+      tooltip: None,
       on_click: Box::new(on_click),
     }
   }
@@ -73,6 +84,7 @@ impl PillButton {
       padding_x: px(12.0),
       padding_y: px(6.0),
       text_size_sm: true,
+      tooltip: None,
       on_click: Box::new(on_click),
     }
   }
@@ -92,6 +104,7 @@ impl PillButton {
       padding_x: px(12.0),
       padding_y: px(6.0),
       text_size_sm: true,
+      tooltip: None,
       on_click: Box::new(on_click),
     }
   }
@@ -120,6 +133,12 @@ impl PillButton {
       padding_x: px(12.0),
       padding_y: px(6.0),
       text_size_sm: true,
+      tooltip: Some(if recording {
+        "Stop recording a key combination.".into()
+      } else {
+        "Press a key combination to fill the input, then click Add to include it in this list."
+          .into()
+      }),
       on_click: Box::new(on_click),
     }
   }
@@ -139,8 +158,14 @@ impl PillButton {
       padding_x: px(8.0),
       padding_y: px(2.0),
       text_size_sm: false,
+      tooltip: None,
       on_click: Box::new(on_click),
     }
+  }
+
+  pub fn tooltip(mut self, text: impl Into<SharedString>) -> Self {
+    self.tooltip = Some(text.into());
+    self
   }
 }
 
@@ -159,6 +184,9 @@ impl RenderOnce for PillButton {
       .hover(move |s| s.bg(rgb(self.hover_bg)))
       .when(self.text_size_sm, |s| s.text_sm())
       .when(!self.text_size_sm, |s| s.text_xs())
+      .when_some(self.tooltip, |s, text| {
+        s.tooltip(move |window, cx| build_tooltip(text.clone(), window, cx))
+      })
       .on_mouse_up(MouseButton::Left, self.on_click)
       .child(self.label)
   }
@@ -190,11 +218,10 @@ impl RenderOnce for KeyRow {
           .text_color(rgb(Palette::TEXT_PRIMARY))
           .child(self.label),
       )
-      .child(PillButton::danger_badge(
-        self.remove_id,
-        "Remove",
-        self.on_remove,
-      ))
+      .child(
+        PillButton::danger_badge(self.remove_id, "Remove", self.on_remove)
+          .tooltip("Remove this key combination from the list. Click Save to apply the change."),
+      )
   }
 }
 
@@ -203,6 +230,7 @@ impl RenderOnce for KeyRow {
 pub struct DetectMethodCard {
   pub id: ElementId,
   pub name: &'static str,
+  pub description: &'static str,
   pub selected: bool,
   pub on_select: Box<dyn Fn(&MouseUpEvent, &mut Window, &mut App)>,
 }
@@ -242,6 +270,7 @@ impl RenderOnce for DetectMethodCard {
         }
       })
       .on_mouse_up(MouseButton::Left, self.on_select)
+      .tooltip(move |window, cx| build_tooltip(self.description.into(), window, cx))
       .child(self.name)
   }
 }

@@ -254,7 +254,10 @@ impl GpuiKitConfigUI {
             cx.listener(move |this, _: &MouseUpEvent, window, cx| {
               this.add_combo(kind, window, cx);
             }),
-          )),
+          ).tooltip(match kind {
+            ListKind::Blacklist => "Add the entered combination to the blocked keys. Click Save to apply the change.",
+            ListKind::Whitelist => "Add the entered combination to the allowed keys, overriding matching blocked rules. Click Save to apply the change.",
+          })),
       )
   }
 }
@@ -284,7 +287,11 @@ impl Render for GpuiKitConfigUI {
           this.show_help = !this.show_help;
           cx.notify();
         }),
-      ));
+      ).tooltip(if show_help {
+        "Hide the instructions for entering key combinations."
+      } else {
+        "Show supported key names, modifiers, and examples of key combinations."
+      }));
 
     let detect_method_section = v_flex()
       .gap_2()
@@ -314,6 +321,11 @@ impl Render for GpuiKitConfigUI {
                 DetectMethodCard {
                   id: ElementId::from(("detect-method", i)),
                   name: method.display_name(),
+                  description: match method {
+                    DetectMethod::NotificationState => "Block configured keys when Windows reports that you are busy or running a fullscreen Direct3D app. This can also activate for non-game apps.",
+                    DetectMethod::Fullscreen => "Block configured keys when the focused window covers its entire monitor, including borderless fullscreen apps. This can also activate for non-game apps.",
+                    DetectMethod::WindowStyle => "Block configured keys when the focused window has no title bar, no system menu, and no child windows. This is a game-detection heuristic and may also match other apps.",
+                  },
                   selected: method == current_method,
                   on_select: Box::new(cx.listener(move |this, _: &MouseUpEvent, _window, cx| {
                     this.config.detect_method = method;
