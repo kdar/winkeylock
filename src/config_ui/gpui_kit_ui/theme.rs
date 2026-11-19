@@ -9,6 +9,8 @@ use gpui_kit::component::Theme;
 use gpui_kit::component::ThemeColor;
 use gpui_kit::component::ThemeRegistry;
 pub const DEFAULT_THEME: &str = "WinKeyLock";
+const GLASS_TINT_ALPHA: f32 = 0.90;
+const TEXT_CONTRAST: f32 = 4.5;
 include!(concat!(env!("OUT_DIR"), "/bundled_themes.rs"));
 #[derive(Clone, Copy)]
 pub(super) struct WindowSurface {
@@ -21,16 +23,58 @@ impl Global for WindowSurface {}
 struct SolidPalette(ThemeColor);
 impl Global for SolidPalette {}
 
-fn material_colors(mut colors: ThemeColor, glass: bool) -> ThemeColor {
-  if !glass {
-    return colors;
+fn luminance(color: Hsla) -> f32 {
+  let color = color.to_rgb();
+  let linear = |channel: f32| {
+    if channel <= 0.04045 {
+      channel / 12.92
+    } else {
+      ((channel + 0.055) / 1.055).powf(2.4)
+    }
+  };
+  0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+}
+
+fn contrast(text: Hsla, background: Hsla) -> f32 {
+  let text = luminance(background.blend(text));
+  let background = luminance(background);
+  (text.max(background) + 0.05) / (text.min(background) + 0.05)
+}
+
+fn readable_text(mut text: Hsla, foreground: Hsla, backgrounds: &[Hsla]) -> Hsla {
+  text.a = 1.0;
+  let minimum = |color| {
+    backgrounds
+      .iter()
+      .map(|background| contrast(color, *background))
+      .fold(f32::INFINITY, f32::min)
+  };
+  // Secondary text can approach the theme foreground, never white beyond its palette.
+  let target = TEXT_CONTRAST.min(minimum(foreground));
+  if minimum(text) >= target {
+    return text;
   }
-  let mut wash = colors.foreground;
-  wash.s = 0.08;
-  wash.l = if colors.background.l < 0.5 {
-    0.94
-  } else {
-    0.06
+  let original = text.to_rgb();
+  for step in 1..=100 {
+    text = original
+      .blend(foreground.to_rgb().alpha(step as f32 / 100.0))
+      .into();
+    if minimum(text) >= target {
+      break;
+    }
+  }
+  text
+}
+
+fn material_colors(mut colors: ThemeColor, glass: bool) -> ThemeColor {
+  let tint = Hsla {
+    a: if glass { GLASS_TINT_ALPHA } else { 1.0 },
+    ..colors.background
+  };
+  // Zeron separates UI surfaces and readable labels from editor/comment tokens.
+  let wash = Hsla {
+    a: 1.0,
+    ..colors.foreground
   };
   let surface = |alpha| {
     Hsla {
@@ -38,21 +82,31 @@ fn material_colors(mut colors: ThemeColor, glass: bool) -> ThemeColor {
       ..wash
     }
   };
-  colors.background = surface(0.06);
+  colors.background = if glass { surface(0.04) } else { tint };
   colors.group_box = surface(0.045);
   colors.muted = surface(0.05);
   colors.sidebar = surface(0.05);
-  colors.title_bar = surface(0.025);
-  colors.button = surface(0.08);
-  colors.button_hover = surface(0.12);
-  colors.button_active = surface(0.16);
-  colors.button_secondary = surface(0.08);
-  colors.button_secondary_hover = surface(0.12);
-  colors.button_secondary_active = surface(0.16);
-  colors.secondary = surface(0.08);
-  colors.secondary_hover = surface(0.12);
-  colors.secondary_active = surface(0.16);
-  colors.switch = surface(0.18);
+  colors.title_bar = if glass {
+    surface(0.025)
+  } else {
+    Hsla {
+      a: 1.0,
+      ..colors.title_bar
+    }
+  };
+  colors.button = surface(0.06);
+  colors.button_hover = surface(0.08);
+  colors.button_active = surface(0.10);
+  colors.button_secondary = surface(0.06);
+  colors.button_secondary_hover = surface(0.08);
+  colors.button_secondary_active = surface(0.10);
+  colors.secondary = surface(0.06);
+  colors.secondary_hover = surface(0.08);
+  colors.secondary_active = surface(0.10);
+  colors.switch = surface(0.14);
+  if tint.l < 0.5 {
+    colors.switch_thumb = wash;
+  }
   colors.list = surface(0.025);
   colors.list_hover = surface(0.08);
   colors.list_active = surface(0.13);
@@ -62,11 +116,42 @@ fn material_colors(mut colors: ThemeColor, glass: bool) -> ThemeColor {
   colors.sidebar_border = colors.border;
   colors.title_bar_border = colors.border;
   // Floating menus overlap other text; retain enough tint to separate it.
-  colors.popover.a = 0.96;
+  colors.popover.a = if glass { 0.96 } else { 1.0 };
   // Accent fills remain strong enough for their foreground text.
-  colors.button_primary.a = 0.88;
-  colors.button_primary_hover.a = 0.94;
-  colors.button_primary_active.a = 0.98;
+  if glass {
+    colors.button_primary.a = 0.88;
+    colors.button_primary_hover.a = 0.94;
+    colors.button_primary_active.a = 0.98;
+  }
+  // Account for the backdrop and nested glass layers, rather than the opaque editor background.
+  let panels = [Hsla::black(), Hsla::white()].map(|backdrop| {
+    backdrop
+      .blend(tint)
+      .blend(colors.muted)
+      .blend(colors.group_box)
+  });
+  let backgrounds = [
+    panels[0],
+    panels[1],
+    panels[0].blend(colors.background),
+    panels[1].blend(colors.background),
+    panels[0].blend(colors.button_active),
+    panels[1].blend(colors.button_active),
+  ];
+  colors.foreground.a = 1.0;
+  let foreground = colors.foreground;
+  for text in [
+    &mut colors.muted_foreground,
+    &mut colors.group_box_foreground,
+    &mut colors.sidebar_foreground,
+    &mut colors.sidebar_accent_foreground,
+    &mut colors.button_foreground,
+    &mut colors.button_secondary_foreground,
+    &mut colors.secondary_foreground,
+    &mut colors.description_list_label_foreground,
+  ] {
+    *text = readable_text(*text, foreground, &backgrounds);
+  }
   colors
 }
 
@@ -126,7 +211,11 @@ pub fn set_glass(enabled: bool, cx: &mut App) {
 /// Paint exactly once per window, above the native Windows blur.
 pub fn window_surface(cx: &App) -> Hsla {
   let mut tint = cx.global::<SolidPalette>().0.background;
-  tint.a = if glass_active(cx) { 0.78 } else { 1.0 };
+  tint.a = if glass_active(cx) {
+    GLASS_TINT_ALPHA
+  } else {
+    1.0
+  };
   tint
 }
 
@@ -325,16 +414,136 @@ mod tests {
       ] {
         assert!(surface.a > 0.0 && surface.a < 1.0);
       }
-      assert_eq!(glass.foreground, solid.foreground);
-      assert_eq!(glass.muted_foreground, solid.muted_foreground);
+      assert_eq!(glass.foreground.a, 1.0);
+      assert_eq!(glass.muted_foreground.a, 1.0);
       assert_eq!(
         glass.button_primary_foreground,
         solid.button_primary_foreground
       );
-      assert_eq!(glass.switch_thumb, solid.switch_thumb);
+      assert_eq!(
+        glass.switch_thumb,
+        material_colors(solid, false).switch_thumb
+      );
       assert!(glass.button_hover.a > glass.button.a);
       assert!(glass.button_active.a > glass.button_hover.a);
-      assert_eq!(material_colors(solid, false), solid);
+      let opaque = material_colors(solid, false);
+      assert_eq!(opaque.background.a, 1.0);
+      assert_eq!(opaque.title_bar.a, 1.0);
+      assert_eq!(
+        opaque.foreground,
+        Hsla {
+          a: 1.0,
+          ..solid.foreground
+        }
+      );
+    }
+  }
+
+  #[test]
+  fn contrast_math_and_already_readable_colors_are_stable() {
+    assert!((contrast(Hsla::white(), Hsla::black()) - 21.0).abs() < 0.001);
+    assert_eq!(
+      readable_text(Hsla::white(), Hsla::white(), &[Hsla::black()]),
+      Hsla::white()
+    );
+    assert_eq!(
+      readable_text(Hsla::black(), Hsla::black(), &[Hsla::white()]),
+      Hsla::black()
+    );
+  }
+
+  #[test]
+  fn every_bundled_theme_has_consistent_ui_roles_in_glass_and_solid_modes() {
+    let mut registry = ThemeRegistry::default();
+    for source in BUNDLED_THEMES {
+      registry.load_themes_from_str(source).unwrap();
+    }
+    assert!(registry.themes().contains_key("Tokyo Night"));
+    for config in registry.themes().values() {
+      let mut theme = Theme::default();
+      theme.apply_config(config);
+      let source = theme.colors;
+      for glass in [false, true] {
+        let colors = material_colors(source, glass);
+        assert_eq!(
+          colors.foreground,
+          Hsla {
+            a: 1.0,
+            ..source.foreground
+          },
+          "Primary text changed in {}",
+          config.name
+        );
+        if !glass {
+          assert_eq!(colors.background.a, 1.0);
+          assert_eq!(colors.title_bar.a, 1.0);
+          assert_eq!(colors.button_primary, source.button_primary);
+        }
+        if config.name.as_ref() == "Tokyo Night" {
+          let primary = colors.foreground.to_rgb();
+          let secondary = colors.muted_foreground.to_rgb();
+          assert!(
+            primary.b - primary.r > 0.15,
+            "Tokyo Night primary text lost its blue tint"
+          );
+          assert!(
+            secondary.b - secondary.r > 0.15,
+            "Tokyo Night secondary text faded toward white"
+          );
+          assert!(
+            luminance(colors.muted_foreground) > luminance(source.muted_foreground),
+            "Editor-comment ink still used for UI labels"
+          );
+        }
+        let backgrounds: Vec<_> = [Hsla::white(), Hsla::black()]
+          .into_iter()
+          .flat_map(|backdrop| {
+            let root = backdrop.blend(Hsla {
+              a: if glass { GLASS_TINT_ALPHA } else { 1.0 },
+              ..source.background
+            });
+            let panel = root.blend(colors.muted);
+            let card = panel.blend(colors.group_box);
+            assert!(
+              luminance(panel) != luminance(root),
+              "Panel is indistinguishable from window in {}",
+              config.name
+            );
+            assert!(
+              luminance(card) != luminance(panel),
+              "Card is indistinguishable from panel in {}",
+              config.name
+            );
+            [
+              root,
+              panel,
+              card,
+              card.blend(colors.background),
+              card.blend(colors.button_active),
+            ]
+          })
+          .collect();
+        let target = backgrounds
+          .iter()
+          .map(|background| contrast(colors.foreground, *background))
+          .fold(TEXT_CONTRAST, f32::min);
+        for background in backgrounds {
+          for text in [
+            colors.foreground,
+            colors.muted_foreground,
+            colors.group_box_foreground,
+            colors.sidebar_foreground,
+            colors.button_foreground,
+            colors.button_secondary_foreground,
+          ] {
+            assert!(
+              contrast(text, background) >= target - 0.001,
+              "Low-contrast UI text in {} (glass={glass})",
+              config.name
+            );
+          }
+        }
+      }
     }
   }
 }
