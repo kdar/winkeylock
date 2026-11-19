@@ -707,7 +707,9 @@ impl Render for GpuiKitConfigUI {
 }
 
 pub fn run(config: KeyConfig) -> Result<(), Box<dyn std::error::Error>> {
-  gpui_kit::application().run(move |cx: &mut App| {
+  gpui_kit::application()
+    .with_assets(gpui_kit::assets::Assets)
+    .run(move |cx: &mut App| {
     gpui_kit::init(cx);
     theme::init(cx);
     theme::init_glass(config.frosted_glass, cx);
@@ -737,6 +739,9 @@ pub fn run(config: KeyConfig) -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
+  use gpui_kit::AssetSource;
+  use gpui_kit::assets::Assets;
+
   use super::Page;
 
   #[test]
@@ -747,5 +752,17 @@ mod tests {
     assert!(Page::Help.matches("modifiers"));
     assert!(!Page::Appearance.matches("frosted blacklist"));
     assert!(!Page::Detection.matches("theme"));
+  }
+
+  #[test]
+  fn page_icons_exist_in_bundled_assets() {
+    for page in Page::ALL {
+      let path = page.icon().path();
+      let bytes = Assets
+        .load(path.as_ref())
+        .expect("bundled icon asset should load")
+        .expect("bundled icon asset should exist");
+      assert!(!bytes.is_empty(), "icon {path} should not be empty");
+    }
   }
 }
