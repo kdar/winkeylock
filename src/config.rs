@@ -523,9 +523,12 @@ pub struct KeyConfig {
   /// Whether the app should run as administrator
   #[serde(default)]
   pub run_as_admin: bool,
-  /// Configuration window theme name; None preserves the original Default look.
+  /// Configuration window theme; None uses the built-in WinKeyLock palette.
   #[serde(default)]
   pub theme: Option<String>,
+  /// Translucent configuration panels over native Windows blur.
+  #[serde(default)]
+  pub frosted_glass: bool,
 }
 
 impl Default for KeyConfig {
@@ -540,6 +543,7 @@ impl Default for KeyConfig {
       detect_method: DetectMethod::default(),
       run_as_admin: false,
       theme: None,
+      frosted_glass: false,
     }
   }
 }
@@ -766,12 +770,13 @@ mod tests {
   use super::*;
 
   #[test]
-  fn config_without_theme_keeps_original_appearance() {
+  fn legacy_config_loads_with_default_appearance() {
     let config: KeyConfig = serde_json::from_str(
       r#"{"blacklist":["lwin"],"whitelist":[],"detect_method":"fullscreen","run_as_admin":true}"#,
     )
     .unwrap();
     assert!(config.theme.is_none());
+    assert!(!config.frosted_glass);
     assert_eq!(config.detect_method, DetectMethod::Fullscreen);
     assert!(config.run_as_admin);
     assert_eq!(config.blacklist[0].string_repr, "lwin");
@@ -781,11 +786,13 @@ mod tests {
   fn selected_theme_survives_config_roundtrip() {
     let config = KeyConfig {
       theme: Some("Catppuccin Mocha".into()),
+      frosted_glass: true,
       ..KeyConfig::default()
     };
     let encoded = serde_json::to_string(&config).unwrap();
     let decoded: KeyConfig = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded.theme.as_deref(), Some("Catppuccin Mocha"));
+    assert!(decoded.frosted_glass);
     assert_eq!(decoded.blacklist[0].string_repr, "lwin");
   }
 
@@ -797,6 +804,7 @@ mod tests {
       detect_method: DetectMethod::default(),
       run_as_admin: false,
       theme: None,
+      frosted_glass: false,
     };
 
     assert!(!config.has_potential_whitelist_match(false, false, false, true, false));
@@ -823,6 +831,7 @@ mod tests {
       detect_method: DetectMethod::default(),
       run_as_admin: false,
       theme: None,
+      frosted_glass: false,
     };
 
     assert!(config.has_potential_whitelist_match(false, false, false, true, false));
@@ -843,6 +852,7 @@ mod tests {
       detect_method: DetectMethod::default(),
       run_as_admin: false,
       theme: None,
+      frosted_glass: false,
     };
 
     assert!(config.has_potential_whitelist_match(false, true, false, false, false));

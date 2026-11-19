@@ -154,9 +154,9 @@ impl PillButton {
     Self {
       id: id.into(),
       label: label.into(),
-      bg: Palette::Danger,
-      hover_bg: Palette::DangerHover,
-      text_color: Palette::DangerText,
+      bg: Palette::ErrorBackground,
+      hover_bg: Palette::ErrorBorder,
+      text_color: Palette::ErrorText,
       font_weight: FontWeight::NORMAL,
       padding_x: px(8.0),
       padding_y: px(2.0),
@@ -183,12 +183,13 @@ impl RenderOnce for PillButton {
       .px(self.padding_x)
       .py(self.padding_y)
       .rounded_md()
+      .text_size(px(13.0))
       .bg(bg)
       .font_weight(self.font_weight)
       .text_color(text_color)
       .cursor_pointer()
       .hover(move |s| s.bg(hover_bg))
-      .when(self.text_size_sm, |s| s.text_sm())
+      .when(self.text_size_sm, |s| s.text_size(px(13.0)))
       .when(!self.text_size_sm, |s| s.text_xs())
       .when_some(self.tooltip, |s, text| {
         s.tooltip(move |window, cx| build_tooltip(text.clone(), window, cx))
@@ -198,7 +199,7 @@ impl RenderOnce for PillButton {
   }
 }
 
-/// Elevated card representing a single key combo row with a delete badge.
+/// Soft key-combination row with an inline remove action.
 #[derive(IntoElement)]
 pub struct KeyRow {
   pub label: SharedString,
@@ -214,11 +215,14 @@ impl RenderOnce for KeyRow {
       .px_3()
       .py_1p5()
       .rounded_md()
-      .bg(Palette::Card.color(cx))
-      .border_1()
-      .border_color(Palette::CardBorder.color(cx))
+      .min_w(px(0.0))
+      .gap_3()
+      .bg(Palette::Help.color(cx))
       .child(
         div()
+          .min_w(px(0.0))
+          .flex_1()
+          .whitespace_normal()
           .text_sm()
           .font_weight(FontWeight::MEDIUM)
           .text_color(Palette::Text.color(cx))
@@ -243,43 +247,49 @@ pub struct DetectMethodCard {
 
 impl RenderOnce for DetectMethodCard {
   fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-    let help_bg = Palette::Help.color(cx);
-    let primary_hover = Palette::PrimaryHover.color(cx);
-    div()
+    let selected = self.selected;
+    let hover = Palette::SecondaryHover.color(cx);
+    h_flex()
       .id(self.id)
-      .flex_1()
-      .px_3()
-      .py_1p5()
-      .rounded_md()
-      .border_1()
-      .border_color(if self.selected {
-        Palette::Primary.color(cx)
-      } else {
-        Palette::ControlBorder.color(cx)
-      })
-      .bg(if self.selected {
-        Palette::Primary.color(cx)
+      .w_full()
+      .min_w(px(0.0))
+      .gap_4()
+      .p_4()
+      .rounded_lg()
+      .bg(if selected {
+        Palette::Selection.color(cx)
       } else {
         Palette::Card.color(cx)
       })
-      .text_xs()
-      .text_center()
-      .text_color(if self.selected {
-        Palette::PrimaryText.color(cx)
-      } else {
-        Palette::Text.color(cx)
-      })
+      .text_color(Palette::Text.color(cx))
       .cursor_pointer()
-      .hover(move |s| {
-        if !self.selected {
-          s.bg(help_bg)
-        } else {
-          s.bg(primary_hover)
-        }
-      })
+      .hover(move |s| s.bg(hover))
       .on_mouse_up(MouseButton::Left, self.on_select)
-      .tooltip(move |window, cx| build_tooltip(self.description.into(), window, cx))
-      .child(self.name)
+      .child(
+        v_flex()
+          .flex_1()
+          .min_w(px(0.0))
+          .gap_1()
+          .child(
+            div()
+              .text_sm()
+              .font_weight(FontWeight::MEDIUM)
+              .child(self.name),
+          )
+          .child(
+            div()
+              .text_xs()
+              .whitespace_normal()
+              .text_color(Palette::MutedText.color(cx))
+              .child(self.description),
+          ),
+      )
+      .child(
+        div()
+          .flex_shrink_0()
+          .text_color(Palette::Primary.color(cx))
+          .child(if selected { "●" } else { "○" }),
+      )
   }
 }
 
@@ -296,8 +306,6 @@ impl RenderOnce for HelpCard {
       .p_3()
       .rounded_md()
       .bg(Palette::Help.color(cx))
-      .border_1()
-      .border_color(Palette::ControlBorder.color(cx))
       .text_xs()
       .text_color(Palette::SecondaryText.color(cx))
       .child(
