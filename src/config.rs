@@ -529,6 +529,12 @@ pub struct KeyConfig {
   /// Translucent configuration panels over native Windows blur.
   #[serde(default)]
   pub frosted_glass: bool,
+  #[serde(default = "default_glass_opacity")]
+  pub glass_opacity: u8,
+}
+
+fn default_glass_opacity() -> u8 {
+  90
 }
 
 impl Default for KeyConfig {
@@ -544,6 +550,7 @@ impl Default for KeyConfig {
       run_as_admin: false,
       theme: None,
       frosted_glass: false,
+      glass_opacity: 90,
     }
   }
 }
@@ -777,6 +784,7 @@ mod tests {
     .unwrap();
     assert!(config.theme.is_none());
     assert!(!config.frosted_glass);
+    assert_eq!(config.glass_opacity, 90);
     assert_eq!(config.detect_method, DetectMethod::Fullscreen);
     assert!(config.run_as_admin);
     assert_eq!(config.blacklist[0].string_repr, "lwin");
@@ -787,12 +795,14 @@ mod tests {
     let config = KeyConfig {
       theme: Some("Catppuccin Mocha".into()),
       frosted_glass: true,
+      glass_opacity: 75,
       ..KeyConfig::default()
     };
     let encoded = serde_json::to_string(&config).unwrap();
     let decoded: KeyConfig = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded.theme.as_deref(), Some("Catppuccin Mocha"));
     assert!(decoded.frosted_glass);
+    assert_eq!(decoded.glass_opacity, 75);
     assert_eq!(decoded.blacklist[0].string_repr, "lwin");
   }
 
@@ -805,6 +815,7 @@ mod tests {
       run_as_admin: false,
       theme: None,
       frosted_glass: false,
+      glass_opacity: 90,
     };
 
     assert!(!config.has_potential_whitelist_match(false, false, false, true, false));
@@ -832,6 +843,7 @@ mod tests {
       run_as_admin: false,
       theme: None,
       frosted_glass: false,
+      glass_opacity: 90,
     };
 
     assert!(config.has_potential_whitelist_match(false, false, false, true, false));
@@ -853,6 +865,7 @@ mod tests {
       run_as_admin: false,
       theme: None,
       frosted_glass: false,
+      glass_opacity: 90,
     };
 
     assert!(config.has_potential_whitelist_match(false, true, false, false, false));

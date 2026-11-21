@@ -9,6 +9,7 @@ use gpui_kit::component::Theme;
 use gpui_kit::component::ThemeColor;
 use gpui_kit::component::ThemeRegistry;
 pub const DEFAULT_THEME: &str = "WinKeyLock";
+#[cfg(test)]
 const GLASS_TINT_ALPHA: f32 = 0.90;
 const TEXT_CONTRAST: f32 = 4.5;
 include!(concat!(env!("OUT_DIR"), "/bundled_themes.rs"));
@@ -16,6 +17,7 @@ include!(concat!(env!("OUT_DIR"), "/bundled_themes.rs"));
 pub(super) struct WindowSurface {
   pub enabled: bool,
   pub supported: bool,
+  pub opacity: f32,
 }
 impl Global for WindowSurface {}
 
@@ -66,9 +68,9 @@ fn readable_text(mut text: Hsla, foreground: Hsla, backgrounds: &[Hsla]) -> Hsla
   text
 }
 
-fn material_colors(mut colors: ThemeColor, glass: bool) -> ThemeColor {
+fn material_colors(mut colors: ThemeColor, glass: bool, opacity: f32) -> ThemeColor {
   let tint = Hsla {
-    a: if glass { GLASS_TINT_ALPHA } else { 1.0 },
+    a: if glass { opacity.clamp(0.5, 1.0) } else { 1.0 },
     ..colors.background
   };
   // Zeron separates UI surfaces and readable labels from editor/comment tokens.
@@ -124,20 +126,28 @@ fn material_colors(mut colors: ThemeColor, glass: bool) -> ThemeColor {
     colors.button_primary_active.a = 0.98;
   }
   // Account for the backdrop and nested glass layers, rather than the opaque editor background.
-  let panels = [Hsla::black(), Hsla::white()].map(|backdrop| {
-    backdrop
-      .blend(tint)
-      .blend(colors.muted)
-      .blend(colors.group_box)
-  });
-  let backgrounds = [
-    panels[0],
-    panels[1],
-    panels[0].blend(colors.background),
-    panels[1].blend(colors.background),
-    panels[0].blend(colors.button_active),
-    panels[1].blend(colors.button_active),
-  ];
+  let backgrounds: Vec<_> = [Hsla::black(), Hsla::white()]
+    .into_iter()
+    .flat_map(|backdrop| {
+      let root = backdrop.blend(tint);
+      let panel = root.blend(colors.muted);
+      let card = panel.blend(colors.group_box);
+      [
+        root,
+        panel,
+        card,
+        card.blend(colors.background),
+        card.blend(colors.button_active),
+      ]
+    })
+    .collect();
+  let solid_background = Hsla {
+    a: 1.0,
+    ..tint
+  }
+  .blend(colors.muted)
+  .blend(colors.group_box)
+  .blend(colors.button_active);
   colors.foreground.a = 1.0;
   let foreground = colors.foreground;
   for text in [
@@ -150,6 +160,8 @@ fn material_colors(mut colors: ThemeColor, glass: bool) -> ThemeColor {
     &mut colors.secondary_foreground,
     &mut colors.description_list_label_foreground,
   ] {
+    // Keep readable UI ink even when a transparent backdrop limits achievable contrast.
+    *text = readable_text(*text, foreground, &[solid_background]);
     *text = readable_text(*text, foreground, &backgrounds);
   }
   colors
@@ -157,15 +169,20 @@ fn material_colors(mut colors: ThemeColor, glass: bool) -> ThemeColor {
 
 fn apply_material(cx: &mut App) {
   if let Some(solid) = cx.try_global::<SolidPalette>() {
-    let colors = material_colors(solid.0, glass_active(cx));
+    let colors = material_colors(
+      solid.0,
+      glass_active(cx),
+      cx.global::<WindowSurface>().opacity,
+    );
     Theme::update(cx, |theme| theme.colors = colors);
   }
 }
 
-pub fn init_glass(enabled: bool, cx: &mut App) {
+pub fn init_glass(enabled: bool, opacity: u8, cx: &mut App) {
   cx.set_global(WindowSurface {
     enabled,
     supported: glass_available(),
+    opacity: f32::from(opacity.clamp(50, 100)) / 100.0,
   });
 }
 
@@ -208,11 +225,18 @@ pub fn set_glass(enabled: bool, cx: &mut App) {
   cx.refresh_windows();
 }
 
+pub fn set_glass_opacity(opacity: u8, cx: &mut App) {
+  let mut surface = *cx.global::<WindowSurface>();
+  surface.opacity = f32::from(opacity.clamp(50, 100)) / 100.0;
+  cx.set_global(surface);
+  apply_material(cx);
+}
+
 /// Paint exactly once per window, above the native Windows blur.
 pub fn window_surface(cx: &App) -> Hsla {
   let mut tint = cx.global::<SolidPalette>().0.background;
   tint.a = if glass_active(cx) {
-    GLASS_TINT_ALPHA
+    cx.global::<WindowSurface>().opacity
   } else {
     1.0
   };
@@ -402,7 +426,7 @@ mod tests {
   #[test]
   fn glass_covers_surfaces_without_fading_content() {
     for solid in [*ThemeColor::dark(), *ThemeColor::light()] {
-      let glass = material_colors(solid, true);
+      let glass = material_colors(solid, true, GLASS_TINT_ALPHA);
       for surface in [
         glass.background,
         glass.group_box,
@@ -422,11 +446,11 @@ mod tests {
       );
       assert_eq!(
         glass.switch_thumb,
-        material_colors(solid, false).switch_thumb
+        material_colors(solid, false, GLASS_TINT_ALPHA).switch_thumb
       );
       assert!(glass.button_hover.a > glass.button.a);
       assert!(glass.button_active.a > glass.button_hover.a);
-      let opaque = material_colors(solid, false);
+      let opaque = material_colors(solid, false, GLASS_TINT_ALPHA);
       assert_eq!(opaque.background.a, 1.0);
       assert_eq!(opaque.title_bar.a, 1.0);
       assert_eq!(
@@ -463,8 +487,14 @@ mod tests {
       let mut theme = Theme::default();
       theme.apply_config(config);
       let source = theme.colors;
-      for glass in [false, true] {
-        let colors = material_colors(source, glass);
+      for (glass, opacity) in [
+        (false, 0.5),
+        (false, 1.0),
+        (true, 0.5),
+        (true, 0.9),
+        (true, 1.0),
+      ] {
+        let colors = material_colors(source, glass, opacity);
         assert_eq!(
           colors.foreground,
           Hsla {
@@ -499,7 +529,7 @@ mod tests {
           .into_iter()
           .flat_map(|backdrop| {
             let root = backdrop.blend(Hsla {
-              a: if glass { GLASS_TINT_ALPHA } else { 1.0 },
+              a: if glass { opacity } else { 1.0 },
               ..source.background
             });
             let panel = root.blend(colors.muted);

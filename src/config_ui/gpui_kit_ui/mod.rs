@@ -92,7 +92,7 @@ impl Page {
       },
       Self::Detection => "detection method notification state fullscreen window style game busy",
       Self::Appearance => {
-        "theme colors colour dark light frosted glass blur transparency translucent window"
+        "theme colors colour dark light frosted glass opacity blur transparency translucent window"
       },
       Self::Help => "help instructions modifiers supported names examples keyboard",
     };
@@ -118,12 +118,14 @@ pub struct GpuiKitConfigUI {
   page: Page,
   search_input: Entity<InputState>,
   sidebar_width: f32,
+  glass_opacity: Entity<gpui_kit::component::slider::SliderState>,
   theme_select: Entity<SelectState<SearchableVec<SharedString>>>,
 }
 
 impl GpuiKitConfigUI {
   fn new(mut config: KeyConfig, window: &mut Window, cx: &mut Context<Self>) -> Self {
-    theme::init_glass(config.frosted_glass, cx);
+    config.glass_opacity = config.glass_opacity.clamp(50, 100);
+    theme::init_glass(config.frosted_glass, config.glass_opacity, cx);
     let selected = theme::apply(config.theme.as_deref().unwrap_or(theme::DEFAULT_THEME), cx);
     config.theme = Some(selected.to_string());
     let names = theme::theme_names(cx);
@@ -145,6 +147,15 @@ impl GpuiKitConfigUI {
       }
     })
     .detach();
+    let glass_opacity = cx.new(|_| gpui_kit::component::slider::SliderState::new()
+      .min(50.0).max(100.0).step(1.0).default_value(f32::from(config.glass_opacity)));
+    cx.subscribe_in(&glass_opacity, window, |this, _, event, _, cx| {
+      if let gpui_kit::component::slider::SliderEvent::Change(value) = event {
+        this.config.glass_opacity = value.end().round().clamp(50.0, 100.0) as u8;
+        theme::set_glass_opacity(this.config.glass_opacity, cx);
+        cx.notify();
+      }
+    }).detach();
     let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search settings"));
     cx.subscribe_in(&search_input, window, |_, _, event, _, cx| {
       if matches!(event, InputEvent::Change) {
@@ -204,6 +215,7 @@ impl GpuiKitConfigUI {
       search_input,
       sidebar_width: 196.0,
       theme_select,
+      glass_opacity,
     }
   }
 
@@ -424,7 +436,7 @@ impl GpuiKitConfigUI {
       .child(v_flex().gap_3().p_4().rounded_xl().bg(Palette::Card.color(cx))
         .child(div().font_weight(FontWeight::MEDIUM).child("Theme"))
         .child(div().text_xs().text_color(Palette::MutedText.color(cx)).child("Choose the app’s colors. Preview changes immediately; Save keeps your choice."))
-        .child(div().w_full().max_w(px(300.0)).child(Select::new(&self.theme_select).search_placeholder("Search themes…").accessibility_label("Theme").w_full())))
+        .child(div().w_full().max_w(px(300.0)).child(Select::new(&self.theme_select).bg(gpui_kit::component::Theme::global(cx).colors.background).search_placeholder("Search themes…").accessibility_label("Theme").w_full())))
       .child(h_flex().gap_4().p_4().rounded_xl().bg(Palette::Card.color(cx))
         .child(v_flex().flex_1().min_w(px(0.0)).gap_1()
           .child(div().font_weight(FontWeight::MEDIUM).child("Frosted glass"))
@@ -438,6 +450,16 @@ impl GpuiKitConfigUI {
             theme::set_glass(*enabled, cx);
             cx.notify();
           }))))
+      .child(v_flex().gap_3().p_4().rounded_xl().bg(Palette::Card.color(cx))
+        .child(div().font_weight(FontWeight::MEDIUM).child("Glass opacity"))
+        .child(div().text_xs().whitespace_normal().text_color(Palette::MutedText.color(cx))
+          .child("Lower values show more of the desktop. Applies while frosted glass is on; 90% is the default."))
+        .child(h_flex().gap_3().items_center()
+          .child(div().flex_1().min_w_0().child(
+            gpui_kit::component::slider::Slider::new(&self.glass_opacity)
+              .accessibility_label("Glass opacity")
+              .disabled(!self.config.frosted_glass || !theme::glass_supported(cx))))
+          .child(div().text_sm().child(format!("{}%", self.config.glass_opacity)))))
   }
 }
 
@@ -712,7 +734,7 @@ pub fn run(config: KeyConfig) -> Result<(), Box<dyn std::error::Error>> {
     .run(move |cx: &mut App| {
     gpui_kit::init(cx);
     theme::init(cx);
-    theme::init_glass(config.frosted_glass, cx);
+    theme::init_glass(config.frosted_glass, config.glass_opacity, cx);
     theme::apply(config.theme.as_deref().unwrap_or(theme::DEFAULT_THEME), cx);
     cx.on_window_closed(|cx, _| {
       if cx.windows().is_empty() {
