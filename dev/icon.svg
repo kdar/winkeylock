@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 256 256">
+  <title>WinKeyLock</title>
+  <rect width="256" height="256" rx="48" fill="#8B929E"/>
+  <rect width="256" height="240" rx="48" fill="#F5EEE2"/>
+  <rect x="18" y="18" width="220" height="204" rx="31" fill="#282C33"/>
+  <rect x="94" y="63" width="68" height="85" rx="34" fill="none" stroke="#FFAE5B" stroke-width="20"/>
+  <rect x="70" y="108" width="116" height="79" rx="18" fill="#FFAE5B"/>
+  <rect x="118" y="130" width="20" height="35" rx="10" fill="#282C33"/>
+</svg>
