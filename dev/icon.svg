@@ -1,9 +1,33 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 256 256">
-  <title>WinKeyLock</title>
-  <rect width="256" height="256" rx="48" fill="#8B929E"/>
-  <rect width="256" height="240" rx="48" fill="#F5EEE2"/>
-  <rect x="18" y="18" width="220" height="204" rx="31" fill="#282C33"/>
-  <rect x="94" y="63" width="68" height="85" rx="34" fill="none" stroke="#FFAE5B" stroke-width="20"/>
-  <rect x="70" y="108" width="116" height="79" rx="18" fill="#FFAE5B"/>
-  <rect x="118" y="130" width="20" height="35" rx="10" fill="#282C33"/>
+  <title>WinKeyLock — High-Visibility Mint Keycap with Obsidian Lock</title>
+  <defs>
+    <linearGradient id="mintBase" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#48B894"/>
+      <stop offset="100%" stop-color="#2D7E66"/>
+    </linearGradient>
+    <linearGradient id="mintFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#92F0CE"/>
+      <stop offset="100%" stop-color="#6CE0B8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sculpted Mint Keycap base (full-bleed) -->
+  <rect width="256" height="256" rx="54" fill="url(#mintBase)"/>
+  <!-- Keycap top face -->
+  <rect x="12" y="8" width="232" height="216" rx="42" fill="url(#mintFace)"/>
+  <!-- Subtle top specular highlight -->
+  <path d="M56 12 H200" stroke="#C4FAEA" stroke-width="3" stroke-linecap="round" opacity="0.75"/>
+
+  <!-- Bold Obsidian Padlock -->
+  <path d="M94 110 V84 C94 65.2 109.2 50 128 50 C146.8 50 162 65.2 162 84 V110"
+        fill="none" stroke="#0F1418" stroke-width="20" stroke-linecap="round"/>
+  <rect x="70" y="104" width="116" height="84" rx="19" fill="#0F1418"/>
+
+  <!-- 4-pane Windows keyhole detail inside lock -->
+  <g fill="#7EE5C0">
+    <rect x="110" y="128" width="16" height="16" rx="3.2"/>
+    <rect x="130" y="128" width="16" height="16" rx="3.2"/>
+    <rect x="110" y="148" width="16" height="16" rx="3.2"/>
+    <rect x="130" y="148" width="16" height="16" rx="3.2"/>
+  </g>
 </svg>
